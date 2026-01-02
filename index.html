@@ -3,18 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stack & Snap - Starry Edition</title>
+    <title>Stack & Snap - TikTok Starry Edition</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; background: #050508; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body, html {
+            margin: 0; padding: 0; overflow: hidden;
+            background: #050508;
+            font-family: 'Inter', -apple-system, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none; -webkit-user-select: none;
+        }
         #root { position: absolute; inset: 0; }
-        #ui-root { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; z-index: 100; }
-        .ui-container { pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; }
-        .glass-panel { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 32px; padding: 40px; text-align: center; width: 80%; max-width: 320px; }
-        .btn { padding: 18px 36px; border-radius: 18px; font-weight: 800; font-size: 1.1rem; cursor: pointer; border: none; width: 100%; margin-top: 10px; }
+        #ui-root { position: absolute; inset: 0; pointer-events: none; color: white; z-index: 100; }
+        
+        /* TikTok Header & HUD */
+        .tiktok-header {
+            position: absolute; top: 60px; width: 100%;
+            text-align: center; pointer-events: none;
+        }
+        .challenge-text { 
+            background: rgba(0, 255, 255, 0.2);
+            border: 1px solid #0ff;
+            padding: 6px 16px; border-radius: 20px;
+            font-size: 0.8rem; font-weight: 800; color: #0ff;
+            box-shadow: 0 0 15px rgba(0,255,255,0.3);
+        }
+        .hud-corner {
+            position: absolute; top: 40px; left: 24px;
+            display: flex; flex-direction: column; align-items: flex-start;
+        }
+
+        .overlay-screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 32px; padding: 40px; text-align: center;
+            width: 80%; max-width: 320px; pointer-events: auto;
+        }
+
+        .btn {
+            padding: 18px 36px; border-radius: 18px; font-weight: 800; font-size: 1.1rem;
+            cursor: pointer; border: none; width: 100%; margin-top: 10px;
+        }
         .btn-glass { background: rgba(255, 255, 255, 0.1); color: white; border: 1px solid rgba(255, 255, 255, 0.2); }
         .btn-cta { background: #00ffff; color: #000; box-shadow: 0 0 30px rgba(0, 255, 255, 0.4); }
-        .score-text { font-size: min(20vw, 5rem); font-weight: 900; tabular-nums: true; }
+
+        .score-text { font-size: 3.5rem; font-weight: 900; tabular-nums: true; line-height: 1; margin: 0; }
+        .best-label { font-size: 0.7rem; font-weight: 700; opacity: 0.4; letter-spacing: 0.1em; margin-top: 2px; }
         .tap-prompt { margin-top: 40px; font-weight: 700; letter-spacing: 0.2em; opacity: 0.6; animation: pulse 2s infinite; font-size: 0.8rem; }
         @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.8; } }
     </style>
@@ -31,14 +67,20 @@
         };
 
         const state = {
-            status: 'START', score: 0, bestScore: 0, combo: 0, axis: 'x', direction: 1,
-            speed: CONFIG.SPEED_INITIAL, stack: [], rubble: [], effects: [], activeBlock: null,
-            lastTime: performance.now()
+            status: 'START', score: 0, 
+            bestScore: parseInt(localStorage.getItem('stackSnapBest')) || 0,
+            combo: 0, axis: 'x', direction: 1, speed: CONFIG.SPEED_INITIAL,
+            stack: [], rubble: [], effects: [], activeBlock: null, lastTime: performance.now()
         };
 
         const AudioService = {
             ctx: null, scale: [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25],
-            init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); },
+            init() { 
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+            },
             playNote(step, isPerfect) {
                 if (!this.ctx) return;
                 const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
@@ -48,6 +90,16 @@
                 gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.6);
                 osc.connect(gain); gain.connect(this.ctx.destination);
                 osc.start(); osc.stop(this.ctx.currentTime + 0.6);
+            },
+            playGameOver() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(120, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.8);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.8);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.8);
             }
         };
 
@@ -56,11 +108,28 @@
             render() {
                 this.root.innerHTML = '';
                 if (state.status === 'START') {
-                    this.root.innerHTML = `<div class="ui-container"><h1>STACK & SNAP</h1><div class="tap-prompt">TAP TO START</div></div>`;
+                    this.root.innerHTML = `<div class="overlay-screen">
+                        <h1 style="font-size:3rem; font-weight:900; margin:0;">STACK & SNAP</h1>
+                        <p style="color:#0ff; font-weight:700; letter-spacing:0.3em; font-size:0.7rem;">TIKTOK CHALLENGE</p>
+                        <div class="tap-prompt">TAP TO START</div>
+                    </div>`;
                 } else if (state.status === 'PLAYING') {
-                    this.root.innerHTML = `<div class="score-text">${state.score}</div>`;
+                    this.root.innerHTML = `
+                        <div class="tiktok-header"><span class="challenge-text">ONLY 1% REACH 20 BLOCKS 🏆</span></div>
+                        <div class="hud-corner">
+                            <div class="score-text">${state.score}</div>
+                            <div class="best-label">BEST: ${state.bestScore}</div>
+                        </div>`;
                 } else if (state.status === 'GAMEOVER') {
-                    this.root.innerHTML = `<div class="ui-container"><div class="glass-panel"><h2>CRASHED!</h2><p>SCORE: ${state.score}</p><button onclick="restartGame()" class="btn btn-glass">TRY AGAIN</button></div></div>`;
+                    this.root.innerHTML = `<div class="overlay-screen">
+                        <div class="glass-panel">
+                            <h2 style="color:#ff0070; margin:0;">CRASHED!</h2>
+                            <p>SCORE: ${state.score} | BEST: ${state.bestScore}</p>
+                            <button id="btn-restart" class="btn btn-glass">TRY AGAIN</button>
+                            <button onclick="window.open('https://tiktok.com')" class="btn btn-cta">PLAY ON TIKTOK</button>
+                        </div>
+                    </div>`;
+                    document.getElementById('btn-restart').onclick = (e) => { e.stopPropagation(); restartGame(); };
                 }
             }
         };
@@ -79,19 +148,16 @@
             scene.add(new THREE.AmbientLight(0xffffff, 0.4));
             pointLight = new THREE.PointLight(0x00ffff, 5, 20); scene.add(pointLight);
 
-            // --- STARRY BACKGROUND IMPLEMENTATION ---
+            // --- STARS ---
             starField = new THREE.Group();
             const starGeom = new THREE.SphereGeometry(0.1, 4, 4);
             for(let i=0; i<150; i++) {
-                const color = Math.random() > 0.5 ? 0x00ffff : 0xff00ff;
                 const star = new THREE.Mesh(starGeom, new THREE.MeshBasicMaterial({ 
-                    color: color, 
-                    transparent: true, 
-                    opacity: Math.random() 
+                    color: Math.random() > 0.5 ? 0x00ffff : 0xff00ff, 
+                    transparent: true, opacity: Math.random() 
                 }));
                 const r = 40 + Math.random() * 40;
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.random() * Math.PI;
+                const theta = Math.random() * Math.PI * 2, phi = Math.random() * Math.PI;
                 star.position.set(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi));
                 starField.add(star);
             }
@@ -100,12 +166,15 @@
             createFoundation();
             animate(performance.now());
             
-            window.addEventListener('mousedown', () => {
+            const handleAction = (e) => {
+                if(e.target.tagName === 'BUTTON') return;
                 AudioService.init();
                 if (state.status === 'START') { state.status = 'PLAYING'; spawnNewBlock(); }
                 else if (state.status === 'PLAYING') placeBlock();
                 UIManager.render();
-            });
+            };
+            window.addEventListener('mousedown', handleAction);
+            window.addEventListener('touchstart', handleAction, { passive: false });
         }
 
         function createFoundation() {
@@ -124,16 +193,35 @@
         }
 
         function placeBlock() {
+            if(!state.activeBlock) return;
             const active = state.activeBlock; const prev = state.stack[state.stack.length - 1];
             const delta = active.position[state.axis] - prev.position[state.axis];
-            const overlap = (state.axis === 'x' ? active.geometry.parameters.width : active.geometry.parameters.depth) - Math.abs(delta);
+            const size = state.axis === 'x' ? active.geometry.parameters.width : active.geometry.parameters.depth;
+            const overlap = size - Math.abs(delta);
 
-            if (overlap <= 0.1) { state.status = 'GAMEOVER'; UIManager.render(); return; }
+            if (overlap <= 0.1) { 
+                state.status = 'GAMEOVER'; 
+                if(state.score > state.bestScore) {
+                    state.bestScore = state.score;
+                    localStorage.setItem('stackSnapBest', state.bestScore);
+                }
+                AudioService.playGameOver();
+                UIManager.render(); 
+                return; 
+            }
 
-            active.position[state.axis] = prev.position[state.axis] + delta / 2;
-            active.geometry = state.axis === 'x' ? new THREE.BoxGeometry(overlap, 1, active.geometry.parameters.depth) : new THREE.BoxGeometry(active.geometry.parameters.width, 1, overlap);
+            const isPerfect = Math.abs(delta) < CONFIG.PERFECT_THRESHOLD;
+            if (isPerfect) {
+                active.position[state.axis] = prev.position[state.axis];
+                state.combo++; AudioService.playNote(state.stack.length, true);
+            } else {
+                state.combo = 0; AudioService.playNote(state.stack.length, false);
+                active.position[state.axis] = prev.position[state.axis] + delta / 2;
+                active.geometry = state.axis === 'x' ? new THREE.BoxGeometry(overlap, 1, active.geometry.parameters.depth) : new THREE.BoxGeometry(active.geometry.parameters.width, 1, overlap);
+            }
             
             state.stack.push(active); state.score++; state.activeBlock = null;
+            state.speed = Math.min(CONFIG.MAX_SPEED, state.speed + CONFIG.SPEED_INC);
             camera.position.y = 12 + state.stack.length; camera.lookAt(0, state.stack.length - 2, 0);
             spawnNewBlock();
         }
@@ -143,12 +231,9 @@
             const dt = (time - state.lastTime) / 16.66;
             state.lastTime = time;
 
-            // Twinkle and Rotate Stars
             if (starField) {
                 starField.rotation.y += 0.0005 * dt;
-                starField.children.forEach(s => {
-                    s.material.opacity = 0.3 + Math.abs(Math.sin(time * 0.001 + s.position.x));
-                });
+                starField.children.forEach(s => { s.material.opacity = 0.3 + Math.abs(Math.sin(time * 0.001 + s.position.x)); });
             }
 
             if (state.status === 'PLAYING' && state.activeBlock) {
@@ -158,7 +243,14 @@
             renderer.render(scene, camera);
         }
 
-        function restartGame() { location.reload(); }
+        function restartGame() {
+            state.stack.forEach(m => scene.remove(m));
+            if(state.activeBlock) scene.remove(state.activeBlock);
+            state.stack = []; state.score = 0; state.status = 'PLAYING'; state.speed = CONFIG.SPEED_INITIAL;
+            camera.position.set(12, 12, 12); camera.lookAt(0, 0, 0);
+            createFoundation(); spawnNewBlock(); UIManager.render();
+        }
+
         initEngine(); UIManager.render();
     </script>
 </body>

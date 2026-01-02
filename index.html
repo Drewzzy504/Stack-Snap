@@ -119,7 +119,7 @@
         const CONFIG = {
             BLOCK_HEIGHT: 1,
             INITIAL_SIZE: 4,
-            SPEED_INITIAL: 0.16, // Speed units per "frame" at 60Hz
+            SPEED_INITIAL: 0.16,
             SPEED_INC: 0.004,
             MAX_SPEED: 0.5,
             PERFECT_THRESHOLD: 0.15,
@@ -129,7 +129,7 @@
         const state = {
             status: 'START',
             score: 0,
-            bestScore: 0,
+            bestScore: parseInt(localStorage.getItem('stack_snap_best_score')) || 0,
             combo: 0,
             axis: 'x',
             direction: 1,
@@ -231,13 +231,13 @@
             }
         };
 
-        let scene, camera, renderer, pointLight;
+        let scene, camera, renderer, pointLight, starField;
         let shakeAmount = 0, shakeDuration = 0;
 
         function initEngine() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x050508);
-            scene.fog = new THREE.FogExp2(0x050508, 0.04);
+            scene.background = new THREE.Color(0x010103);
+            scene.fog = new THREE.FogExp2(0x010103, 0.03);
 
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(12, 12, 12);
@@ -254,15 +254,48 @@
             pointLight = new THREE.PointLight(0x00ffff, 5, 20);
             scene.add(pointLight);
 
-            const starGeom = new THREE.SphereGeometry(0.12, 4, 4);
-            for(let i=0; i<60; i++) {
-                const star = new THREE.Mesh(starGeom, new THREE.MeshBasicMaterial({ color: Math.random() > 0.5 ? 0x00ffff : 0xff00ff }));
-                const r = 50 + Math.random() * 50;
+            // STARRY BACKGROUND FIX: Fog must be disabled for stars to be visible at distance
+            const starCount = 1200;
+            const starGeometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(starCount * 3);
+            const colors = new Float32Array(starCount * 3);
+            const colorChoices = [
+                new THREE.Color(0x00ffff), 
+                new THREE.Color(0xff00ff), 
+                new THREE.Color(0xffffff), 
+                new THREE.Color(0x4444ff),
+                new THREE.Color(0x00ffaa)
+            ];
+
+            for(let i = 0; i < starCount; i++) {
+                const r = 80 + Math.random() * 250;
                 const theta = Math.random() * Math.PI * 2;
                 const phi = Math.random() * Math.PI;
-                star.position.set(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi));
-                scene.add(star);
+                
+                positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+                positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+                positions[i * 3 + 2] = r * Math.cos(phi);
+
+                const c = colorChoices[Math.floor(Math.random() * colorChoices.length)];
+                colors[i * 3] = c.r;
+                colors[i * 3 + 1] = c.g;
+                colors[i * 3 + 2] = c.b;
             }
+
+            starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            starGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const starMaterial = new THREE.PointsMaterial({
+                size: 1.2,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.9,
+                sizeAttenuation: true,
+                fog: false // CRITICAL: Stars should not fade with scene fog
+            });
+
+            starField = new THREE.Points(starGeometry, starMaterial);
+            scene.add(starField);
 
             createFoundation();
             state.lastTime = performance.now();
@@ -432,7 +465,10 @@
 
         function gameOver() {
             state.status = 'GAMEOVER';
-            if (state.score > state.bestScore) state.bestScore = state.score;
+            if (state.score > state.bestScore) {
+                state.bestScore = state.score;
+                localStorage.setItem('stack_snap_best_score', state.bestScore.toString());
+            }
             AudioService.playGameOver();
             shakeAmount = 1.5; shakeDuration = 600;
             UIManager.render();
@@ -448,7 +484,7 @@
             state.score = 0; state.combo = 0; state.speed = CONFIG.SPEED_INITIAL;
             state.axis = 'x'; state.status = 'PLAYING';
             shakeAmount = 0; shakeDuration = 0;
-            state.lastTime = performance.now(); // Reset time tracker
+            state.lastTime = performance.now();
             
             camera.position.set(12, 12, 12);
             camera.lookAt(0,0,0);
@@ -462,22 +498,22 @@
         function animate(time) {
             requestAnimationFrame(animate);
             
-            // Calculate delta time for consistent speed
             const deltaTime = time - state.lastTime;
             state.lastTime = time;
-            // Normalize to a 60FPS baseline (16.66ms per frame)
             const dt = deltaTime / 16.666;
 
+            if (starField) {
+                starField.rotation.y += 0.0004 * dt;
+                starField.rotation.x += 0.0002 * dt;
+            }
+
             if (state.status === 'PLAYING' && state.activeBlock) {
-                // Apply dt to movement
                 state.activeBlock.position[state.axis] += state.direction * state.speed * dt;
-                
                 if (Math.abs(state.activeBlock.position[state.axis]) > 13) state.direction *= -1;
                 pointLight.position.copy(state.activeBlock.position);
                 pointLight.position.y += 2;
             }
 
-            // Rubble Physics with dt
             state.rubble = state.rubble.filter(r => {
                 r.position.y -= 0.3 * dt;
                 r.rotation.x += 0.1 * dt;
@@ -485,7 +521,6 @@
                 return true;
             });
 
-            // Effects with dt
             state.effects = state.effects.filter(e => {
                 e.scale.addScalar(0.2 * dt);
                 e.material.opacity -= 0.05 * dt;
@@ -493,7 +528,6 @@
                 return true;
             });
 
-            // Screen Shake
             if (shakeDuration > 0) {
                 const shake = (Math.random() - 0.5) * shakeAmount;
                 camera.position.x += shake;

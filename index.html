@@ -3,60 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stack & Snap - Full Juice</title>
+    <title>Stack & Snap - Final Stable</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; background: #050508; font-family: sans-serif; user-select: none; -webkit-user-select: none; }
-        #ui-root { position: absolute; inset: 0; pointer-events: none; color: white; z-index: 100; text-align: center; }
-        .score { position: absolute; top: 40px; left: 0; right: 0; font-size: 4rem; font-weight: 900; opacity: 0.9; }
-        .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); pointer-events: auto; backdrop-filter: blur(10px); }
-        .btn { padding: 20px 50px; background: #00ffff; color: #000; border: none; border-radius: 50px; font-weight: 900; font-size: 1.2rem; cursor: pointer; margin-top: 20px; }
-        .combo { color: #00ffff; font-style: italic; font-weight: 800; font-size: 1.5rem; margin-top: 10px; }
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #050508; font-family: sans-serif; user-select: none; -webkit-tap-highlight-color: transparent; }
+        #ui { position: absolute; inset: 0; pointer-events: none; color: white; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .score { position: absolute; top: 40px; font-size: 3.5rem; font-weight: 900; text-shadow: 0 0 20px rgba(0,255,255,0.5); }
+        .overlay { pointer-events: auto; background: rgba(0,0,0,0.8); padding: 40px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.1); text-align: center; backdrop-filter: blur(10px); }
+        .btn { padding: 15px 40px; background: #00ffff; color: #000; border: none; border-radius: 15px; font-weight: 900; font-size: 1.2rem; cursor: pointer; margin-top: 20px; }
+        .combo { color: #00ffff; font-size: 1.2rem; font-weight: 700; margin-top: 5px; }
     </style>
 </head>
 <body>
-    <div id="ui-root"></div>
+    <div id="ui"></div>
     <div id="root"></div>
 
     <script>
-        const CONFIG = {
-            PERFECT_LIMIT: 0.15,
-            INITIAL_SPEED: 0.15,
-            SPEED_INC: 0.005,
-        };
-
+        const CONFIG = { PERFECT_LIMIT: 0.18, INITIAL_SPEED: 0.16, SPEED_INC: 0.005 };
         let state = {
-            status: 'START',
-            score: 0,
-            combo: 0,
-            speed: CONFIG.INITIAL_SPEED,
-            stack: [], debris: [], 
-            axis: 'x', direction: 1,
-            activeBlock: null, shake: 0
+            status: 'START', score: 0, combo: 0, speed: CONFIG.INITIAL_SPEED,
+            stack: [], debris: [], axis: 'x', direction: 1,
+            activeBlock: null, lastTime: 0
         };
 
-        const Audio = {
+        const AudioSvc = {
             ctx: null,
-            scale: [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25],
+            notes: [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25],
             init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); },
             play(isPerfect) {
                 this.init();
                 const osc = this.ctx.createOscillator();
                 const g = this.ctx.createGain();
-                
                 if (isPerfect) {
-                    const note = state.score % 8;
-                    const octave = Math.floor(state.score / 8);
-                    osc.frequency.setValueAtTime(this.scale[note] * Math.pow(2, octave), this.ctx.currentTime);
+                    const freq = this.notes[state.score % 8] * Math.pow(2, Math.floor(state.score / 8));
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
                     osc.type = 'sine';
-                    g.gain.setValueAtTime(0.2, this.ctx.currentTime);
-                } else {
-                    osc.frequency.setValueAtTime(120, this.ctx.currentTime);
-                    osc.type = 'triangle';
                     g.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                } else {
+                    osc.frequency.setValueAtTime(140, this.ctx.currentTime);
+                    osc.type = 'triangle';
+                    g.gain.setValueAtTime(0.1, this.ctx.currentTime);
                 }
-
-                g.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.4);
+                g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
                 osc.connect(g); g.connect(this.ctx.destination);
                 osc.start(); osc.stop(this.ctx.currentTime + 0.4);
             }
@@ -66,62 +54,61 @@
 
         function init() {
             scene = new THREE.Scene();
-            scene.fog = new THREE.Fog(0x050508, 10, 50);
-            
+            scene.fog = new THREE.Fog(0x050508, 15, 45);
             camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
             camera.position.set(10, 10, 10);
-            camera.lookAt(0, 0, 0);
-
+            
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
             document.getElementById('root').appendChild(renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-            const light = new THREE.DirectionalLight(0xffffff, 0.8);
-            light.position.set(5, 10, 5);
-            scene.add(light);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+            sun.position.set(5, 15, 5);
+            scene.add(sun);
 
-            // Restored Stars
+            // Stars
             const starGeo = new THREE.BufferGeometry();
-            const starPoints = [];
-            for(let i=0; i<1000; i++) starPoints.push((Math.random()-0.5)*100, (Math.random()-0.5)*100, (Math.random()-0.5)*100);
-            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPoints, 3));
-            stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x888888, size: 0.1 }));
+            const starVex = [];
+            for(let i=0; i<800; i++) starVex.push((Math.random()-0.5)*100, (Math.random()-0.5)*100, (Math.random()-0.5)*100);
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVex, 3));
+            stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xaaaaaa, size: 0.1 }));
             scene.add(stars);
 
             reset();
             animate();
         }
 
-        function getGlassMat(color) {
+        function glassMat(color) {
             return new THREE.MeshPhysicalMaterial({
-                color: color, transmission: 0.7, thickness: 1, roughness: 0.1, emissive: color, emissiveIntensity: 0.2
+                color, transmission: 0.8, thickness: 1.5, roughness: 0.05, emissive: color, emissiveIntensity: 0.3, transparent: true
             });
         }
 
         function reset() {
             state.stack.forEach(m => scene.remove(m));
-            state.debris.forEach(m => scene.remove(m));
+            state.debris.forEach(d => scene.remove(d.mesh));
             state.stack = []; state.debris = []; state.score = 0; state.combo = 0;
             state.speed = CONFIG.INITIAL_SPEED; state.status = 'START';
-            
-            const base = new THREE.Mesh(new THREE.BoxGeometry(4, 1, 4), getGlassMat(0x00ffff));
+            const base = new THREE.Mesh(new THREE.BoxGeometry(4, 1, 4), glassMat(0x00ffff));
             scene.add(base); state.stack.push(base);
             renderUI();
         }
 
         function spawn() {
-            const prev = state.stack[state.stack.length-1];
+            const top = state.stack[state.stack.length-1];
             state.axis = state.axis === 'x' ? 'z' : 'x';
-            const color = new THREE.Color().setHSL((state.score * 0.1) % 1, 0.7, 0.5);
-            const mesh = new THREE.Mesh(prev.geometry.clone(), getGlassMat(color));
-            mesh.position.set(prev.position.x, state.stack.length, prev.position.z);
+            const color = new THREE.Color().setHSL((state.score * 0.1) % 1, 0.8, 0.6);
+            const mesh = new THREE.Mesh(top.geometry.clone(), glassMat(color));
+            mesh.position.set(top.position.x, state.stack.length, top.position.z);
             mesh.position[state.axis] = 10 * state.direction;
             scene.add(mesh);
             state.activeBlock = mesh;
         }
 
         function place() {
+            if (!state.activeBlock || state.status !== 'PLAYING') return;
             const active = state.activeBlock;
             const prev = state.stack[state.stack.length-1];
             const size = state.axis === 'x' ? active.geometry.parameters.width : active.geometry.parameters.depth;
@@ -137,29 +124,25 @@
             if (Math.abs(delta) < CONFIG.PERFECT_LIMIT) {
                 active.position[state.axis] = prev.position[state.axis];
                 state.combo++;
-                Audio.play(true);
+                AudioSvc.play(true);
             } else {
                 state.combo = 0;
-                // Debris Logic
-                const debrisSize = Math.abs(delta);
-                const debrisGeom = state.axis === 'x' ? 
-                    new THREE.BoxGeometry(debrisSize, 1, active.geometry.parameters.depth) :
-                    new THREE.BoxGeometry(active.geometry.parameters.width, 1, debrisSize);
-                
-                const debris = new THREE.Mesh(debrisGeom, active.material.clone());
-                debris.position.copy(active.position);
-                debris.position[state.axis] += (overlap/2 + debrisSize/2) * Math.sign(delta);
-                scene.add(debris);
-                state.debris.push({ mesh: debris, vel: 0, rot: Math.random() * 0.1 });
+                // Debris creation
+                const dSize = Math.abs(delta);
+                const dGeom = state.axis === 'x' ? new THREE.BoxGeometry(dSize, 1, active.geometry.parameters.depth) : new THREE.BoxGeometry(active.geometry.parameters.width, 1, dSize);
+                const dMesh = new THREE.Mesh(dGeom, active.material.clone());
+                dMesh.position.copy(active.position);
+                dMesh.position[state.axis] += (overlap/2 + dSize/2) * Math.sign(delta);
+                scene.add(dMesh);
+                state.debris.push({ mesh: dMesh, v: 0 });
 
-                // Slice Active
-                const newSize = overlap;
+                // Update active block geometry
+                const nW = state.axis === 'x' ? overlap : active.geometry.parameters.width;
+                const nD = state.axis === 'z' ? overlap : active.geometry.parameters.depth;
                 active.geometry.dispose();
-                active.geometry = state.axis === 'x' ? 
-                    new THREE.BoxGeometry(newSize, 1, active.geometry.parameters.depth) :
-                    new THREE.BoxGeometry(active.geometry.parameters.width, 1, newSize);
+                active.geometry = new THREE.BoxGeometry(nW, 1, nD);
                 active.position[state.axis] = prev.position[state.axis] + (delta/2);
-                Audio.play(false);
+                AudioSvc.play(false);
             }
 
             state.stack.push(active);
@@ -170,15 +153,17 @@
         }
 
         function renderUI() {
-            const root = document.getElementById('ui-root');
+            const ui = document.getElementById('ui');
             if (state.status === 'START') {
-                root.innerHTML = `<div class="overlay"><h1>STACK & SNAP</h1><button class="btn" onclick="state.status='PLAYING'; spawn(); renderUI();">START</button></div>`;
+                ui.innerHTML = `<div class="overlay"><h1>STACK & SNAP</h1><button class="btn" onclick="startGame()">START GAME</button></div>`;
             } else if (state.status === 'PLAYING') {
-                root.innerHTML = `<div class="score">${state.score}${state.combo > 1 ? `<div class="combo">COMBO x${state.combo}</div>` : ''}</div>`;
+                ui.innerHTML = `<div class="score">${state.score}${state.combo > 1 ? `<div class="combo">COMBO x${state.combo}</div>` : ''}</div>`;
             } else {
-                root.innerHTML = `<div class="overlay"><h2>CRASHED</h2><h1>${state.score}</h1><button class="btn" onclick="location.reload()">RETRY</button></div>`;
+                ui.innerHTML = `<div class="overlay"><h2>CRASHED</h2><h1>${state.score}</h1><button class="btn" onclick="location.reload()">RETRY</button></div>`;
             }
         }
+
+        window.startGame = () => { AudioSvc.init(); state.status = 'PLAYING'; spawn(); renderUI(); };
 
         function animate() {
             requestAnimationFrame(animate);
@@ -186,30 +171,19 @@
                 state.activeBlock.position[state.axis] += state.direction * state.speed;
                 if (Math.abs(state.activeBlock.position[state.axis]) > 10) state.direction *= -1;
             }
-
-            // Handle Debris falling
             state.debris.forEach((d, i) => {
-                d.vel -= 0.02;
-                d.mesh.position.y += d.vel;
-                d.mesh.rotation.x += d.rot;
-                if (d.mesh.position.y < -10) {
-                    scene.remove(d.mesh);
-                    state.debris.splice(i, 1);
-                }
+                d.v -= 0.02; d.mesh.position.y += d.v; d.mesh.rotation.z += 0.1;
+                if (d.mesh.position.y < -10) { scene.remove(d.mesh); state.debris.splice(i, 1); }
             });
-
-            if (stars) stars.rotation.y += 0.001;
-
+            if (stars) stars.rotation.y += 0.0005;
             const targetY = 10 + state.stack.length;
             camera.position.y += (targetY - camera.position.y) * 0.1;
             camera.lookAt(0, state.stack.length - 2, 0);
-            
             renderer.render(scene, camera);
         }
 
-        window.addEventListener('mousedown', () => { if(state.status === 'PLAYING') place(); });
-        window.addEventListener('touchstart', (e) => { e.preventDefault(); if(state.status === 'PLAYING') place(); });
-
+        window.addEventListener('mousedown', (e) => { if(e.target.tagName !== 'BUTTON') place(); });
+        window.addEventListener('touchstart', (e) => { if(e.target.tagName !== 'BUTTON') { e.preventDefault(); place(); } }, {passive: false});
         init();
     </script>
 </body>

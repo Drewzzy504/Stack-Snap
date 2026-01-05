@@ -1,683 +1,1583 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stack & Snap - Cosmic Edition</title>
-    
-    <!-- Simple error safety net -->
-    <script>
-        window.addEventListener('unhandledrejection', (e) => e.preventDefault());
-        window.onerror = () => true;
-    </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>STACK VOID</title>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap" rel="stylesheet">
-    
-    <style>
-        :root {
-            --neon-cyan: #00ffff;
-            --neon-pink: #ff00ff;
-            --glass-bg: rgba(255, 255, 255, 0.05);
-            --glass-border: rgba(255, 255, 255, 0.1);
-        }
-        body, html {
-            margin: 0; padding: 0; overflow: hidden;
-            background: #000003;
-            font-family: 'Inter', -apple-system, sans-serif;
-            -webkit-tap-highlight-color: transparent;
-            user-select: none; color: white;
-            touch-action: none;
-        }
-        #root { position: absolute; inset: 0; z-index: 1; }
-        #ui-root {
-            position: absolute; inset: 0; pointer-events: none; z-index: 100;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-        }
-        .overlay {
-            width: 100%; height: 100%; display: flex; flex-direction: column;
-            align-items: center; justify-content: center; pointer-events: auto;
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            background: rgba(0,0,0,0.5); transition: opacity 0.4s;
-        }
-        .hud {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; padding: 20px; box-sizing: border-box;
-            display: flex; flex-direction: column; align-items: center;
-        }
-        .hud-top-center { text-align: center; pointer-events: none; margin-top: 20px; }
-        
-        .glass-panel {
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            backdrop-filter: blur(32px); -webkit-backdrop-filter: blur(32px);
-            border-radius: 32px; padding: 25px; text-align: center;
-            box-shadow: 0 40px 80px rgba(0,0,0,0.6);
-            width: 85%; max-width: 380px;
-            pointer-events: auto;
-        }
-        .btn {
-            padding: 16px 24px; border-radius: 16px; font-weight: 800; font-size: 1rem;
-            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            pointer-events: auto; cursor: pointer; border: none; outline: none;
-            width: 100%; margin: 8px 0; display: block; text-transform: uppercase;
-            letter-spacing: 0.1em;
-        }
-        .btn-glass { background: rgba(255, 255, 255, 0.08); color: white; border: 1px solid rgba(255,255,255,0.1); }
-        .btn-cta { background: var(--neon-cyan); color: #000; box-shadow: 0 0 30px rgba(0,255,255,0.4); }
-        .btn:active { transform: scale(0.92); }
-        
-        .score-huge { 
-            font-size: 5rem; 
-            font-weight: 900; 
-            margin: 0; 
-            line-height: 1; 
-            text-shadow: 0 0 30px rgba(255,255,255,0.2);
-            transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
+  <!-- Simple error safety net (keeps canvas from going white-screen) -->
+  <script>
+    window.addEventListener('unhandledrejection', (e) => e.preventDefault());
+    window.onerror = () => true;
+  </script>
 
-        .combo-popup {
-            font-size: 2.5rem; font-weight: 900; font-style: italic;
-            text-transform: uppercase; letter-spacing: -0.05em; margin-top: 5px;
-            animation: comboIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-            filter: drop-shadow(0 0 25px currentColor);
-        }
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap" rel="stylesheet" />
 
-        @keyframes comboIn {
-            0% { transform: scale(0.4) rotate(-5deg); opacity: 0; }
-            40% { transform: scale(1.15) rotate(2deg); opacity: 1; }
-            100% { transform: scale(1) rotate(0); opacity: 1; }
-        }
-
-        .streak-counter {
-            font-size: 0.9rem; font-weight: 800; letter-spacing: 0.3em;
-            opacity: 1; margin-top: 5px; text-transform: uppercase;
-        }
-        
-        #loading-screen {
-            position: fixed; inset: 0; background: #000003; z-index: 1000;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-        }
-        .loader-bar { width: 240px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 24px; overflow: hidden; }
-        .loader-fill { width: 0%; height: 100%; background: var(--neon-cyan); transition: width 0.4s; }
-        
-        .selector-label { font-size: 0.65rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2em; opacity: 0.5; margin: 15px 0 8px; display: block;}
-
-        .theme-grid {
-            display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
-            margin-bottom: 10px; padding: 5px;
-        }
-        .theme-item {
-            aspect-ratio: 1; border-radius: 10px; border: 2px solid transparent;
-            cursor: pointer; position: relative; display: flex; align-items: center; justify-content: center;
-            background: rgba(255,255,255,0.05); overflow: hidden; transition: 0.2s;
-        }
-        .theme-item.selected { border-color: var(--neon-cyan); transform: scale(1.1); box-shadow: 0 0 15px rgba(0,255,255,0.3); }
-        .theme-item.locked { opacity: 0.2; filter: grayscale(1); cursor: default; }
-
-        .difficulty-grid {
-            display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;
-        }
-        .diff-item {
-            padding: 10px; border-radius: 12px; background: rgba(255,255,255,0.05);
-            font-size: 0.75rem; font-weight: 800; letter-spacing: 0.05em; cursor: pointer;
-            border: 1px solid rgba(255,255,255,0.1); transition: 0.2s;
-        }
-        .diff-item.selected { 
-            background: rgba(0,255,255,0.15); border-color: var(--neon-cyan); 
-            color: var(--neon-cyan); box-shadow: inset 0 0 10px rgba(0,255,255,0.1);
-        }
-
-        .floating-controls {
-            position: absolute; top: 20px; right: 20px; display: flex; gap: 10px; pointer-events: auto;
-        }
-        .round-btn {
-            width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px); color: white; cursor: pointer; transition: 0.2s;
-        }
-        .round-btn:active { transform: scale(0.9); }
-        .round-btn.active { border-color: var(--neon-cyan); color: var(--neon-cyan); }
-
-        .unlock-badge {
-            font-size: 0.5rem; font-weight: 900; color: #fff;
-            background: rgba(0,0,0,0.8); padding: 2px 4px; border-radius: 4px;
-            position: absolute; bottom: 2px; right: 2px;
-        }
-    </style>
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-            "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-        }
+  <style>
+    :root {
+      --neon-cyan: #00ffff;
+      --neon-pink: #ff00ff;
+      --neon-fail: #ff0070;
+      --glass-bg: rgba(255, 255, 255, 0.05);
+      --glass-border: rgba(255, 255, 255, 0.1);
     }
-    </script>
+
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000003;
+      font-family: 'Inter', -apple-system, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      color: white;
+      touch-action: none;
+    }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+    }
+
+    #ui-root {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .overlay {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      background: rgba(0, 0, 0, 0.5);
+      transition: opacity 0.4s;
+    }
+
+    .hud {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      padding: 20px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hud-top-center {
+      text-align: center;
+      pointer-events: none;
+      margin-top: 20px;
+    }
+
+    .glass-panel {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(32px);
+      -webkit-backdrop-filter: blur(32px);
+      border-radius: 32px;
+      padding: 25px;
+      text-align: center;
+      box-shadow: 0 40px 80px rgba(0, 0, 0, 0.6);
+      width: 85%;
+      max-width: 380px;
+      pointer-events: auto;
+    }
+
+    .btn {
+      padding: 16px 24px;
+      border-radius: 16px;
+      font-weight: 800;
+      font-size: 1rem;
+      transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      pointer-events: auto;
+      cursor: pointer;
+      border: none;
+      outline: none;
+      width: 100%;
+      margin: 8px 0;
+      display: block;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .btn-glass {
+      background: rgba(255, 255, 255, 0.08);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-cta {
+      background: var(--neon-cyan);
+      color: #000;
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.4);
+    }
+
+    .btn:active {
+      transform: scale(0.92);
+    }
+
+    .score-huge {
+      font-size: 5rem;
+      font-weight: 900;
+      margin: 0;
+      line-height: 1;
+      text-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
+      transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .combo-popup {
+      font-size: 2.5rem;
+      font-weight: 900;
+      font-style: italic;
+      text-transform: uppercase;
+      letter-spacing: -0.05em;
+      margin-top: 5px;
+      animation: comboIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      filter: drop-shadow(0 0 25px currentColor);
+    }
+
+    @keyframes comboIn {
+      0% { transform: scale(0.4) rotate(-5deg); opacity: 0; }
+      40% { transform: scale(1.15) rotate(2deg); opacity: 1; }
+      100% { transform: scale(1) rotate(0); opacity: 1; }
+    }
+
+    .streak-counter {
+      font-size: 0.9rem;
+      font-weight: 800;
+      letter-spacing: 0.3em;
+      opacity: 1;
+      margin-top: 5px;
+      text-transform: uppercase;
+    }
+
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      background: #000003;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .loader-bar {
+      width: 240px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      margin-top: 24px;
+      overflow: hidden;
+    }
+
+    .loader-fill {
+      width: 0%;
+      height: 100%;
+      background: var(--neon-cyan);
+      transition: width 0.4s;
+    }
+
+    .selector-label {
+      font-size: 0.65rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      opacity: 0.5;
+      margin: 15px 0 8px;
+      display: block;
+    }
+
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+      padding: 5px;
+    }
+
+    .theme-item {
+      aspect-ratio: 1;
+      border-radius: 10px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.05);
+      overflow: hidden;
+      transition: 0.2s;
+    }
+
+    .theme-item.selected {
+      border-color: var(--neon-cyan);
+      transform: scale(1.1);
+      box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+    }
+
+    .theme-item.locked {
+      opacity: 0.2;
+      filter: grayscale(1);
+      cursor: default;
+    }
+
+    .difficulty-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .diff-item {
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: 0.2s;
+    }
+
+    .diff-item.selected {
+      background: rgba(0, 255, 255, 0.15);
+      border-color: var(--neon-cyan);
+      color: var(--neon-cyan);
+      box-shadow: inset 0 0 10px rgba(0, 255, 255, 0.1);
+    }
+
+    .floating-controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      display: flex;
+      gap: 10px;
+      pointer-events: auto;
+    }
+
+    .round-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      color: white;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .round-btn:active { transform: scale(0.9); }
+
+    .round-btn.active {
+      border-color: var(--neon-cyan);
+      color: var(--neon-cyan);
+    }
+
+    .unlock-badge {
+      font-size: 0.5rem;
+      font-weight: 900;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 2px 4px;
+      border-radius: 4px;
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+    }
+
+    .lock-icon {
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      background: rgba(0, 0, 0, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 8px 18px rgba(0,0,0,0.45);
+      pointer-events: none;
+    }
+
+    .btn[disabled] {
+      opacity: 0.55;
+      cursor: not-allowed;
+      filter: grayscale(0.2);
+      box-shadow: none;
+    }
+
+    /* Dev-only diagnostics (acts like lightweight “tests” in a no-build environment) */
+    #dev-tests {
+      position: fixed;
+      left: 10px;
+      bottom: 10px;
+      z-index: 2000;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 11px;
+      color: rgba(255,255,255,0.75);
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 8px 10px;
+      border-radius: 10px;
+      backdrop-filter: blur(10px);
+      display: none; /* set to block to show */
+      max-width: 60vw;
+      pointer-events: none;
+      white-space: pre-wrap;
+    }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
+
 <body>
-    <div id="loading-screen">
-        <h2 style="letter-spacing: 0.6em; font-weight: 900; color: var(--neon-cyan)">STACK & SNAP</h2>
-        <div class="loader-bar"><div id="loader-fill" class="loader-fill"></div></div>
-    </div>
-    <div id="root"></div>
-    <div id="ui-root"></div>
+  <div id="loading-screen">
+    <h2 style="letter-spacing: 0.6em; font-weight: 900; color: var(--neon-cyan)">STACK VOID</h2>
+    <div class="loader-bar"><div id="loader-fill" class="loader-fill"></div></div>
+  </div>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-        import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-        import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-        import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+  <div id="root"></div>
+  <div id="ui-root"></div>
+  <div id="dev-tests"></div>
 
-        const THEMES = [
-            { id: 'neon', name: 'NEON', colors: ['#00ffff', '#7000ff', '#ff0070'], unlock: 0 },
-            { id: 'cyber', name: 'CYBER', colors: ['#ffcf00', '#ff0070', '#00ff70'], unlock: 20 },
-            { id: 'emerald', name: 'EMERALD', colors: ['#00ff70', '#00ffaa', '#008855'], unlock: 50 },
-            { id: 'ruby', name: 'RUBY', colors: ['#ff0000', '#aa0000', '#550000'], unlock: 100 },
-            { id: 'ghost', name: 'GHOST', colors: ['#ffffff', '#cccccc', '#999999'], unlock: 150 }
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+    // =====================
+    // CrazyGames SDK (safe local dev)
+    // Full requirements without breaking localhost testing.
+    // =====================
+    const CG = {
+      get sdk() {
+        return (window.CrazyGames && window.CrazyGames.SDK) ? window.CrazyGames.SDK : null;
+      },
+      get isLocal() {
+        const h = window.location.hostname;
+        return h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h.endsWith('.local');
+      },
+      safe(fn) {
+        try {
+          const s = this.sdk;
+          if (!s) return;
+          fn(s);
+        } catch (e) {
+          // Never crash the game if SDK isn't present or errors.
+        }
+      },
+      loadingStart() { this.safe(s => s.game?.loadingStart && s.game.loadingStart()); },
+      loadingStop()  { this.safe(s => s.game?.loadingStop  && s.game.loadingStop()); },
+      gameplayStart(){ this.safe(s => s.game?.gameplayStart && s.game.gameplayStart()); },
+      gameplayStop() { this.safe(s => s.game?.gameplayStop  && s.game.gameplayStop()); },
+
+      // Ads: keep them off for local dev, and only show at safe breakpoints.
+      adsEnabled() { return !this.isLocal; },
+      requestInterstitial({ onStart, onFinish, onError } = {}) {
+        if (!this.adsEnabled()) { onError && onError(new Error('Ads disabled locally')); return; }
+        this.safe(s => {
+          if (!s.ad || !s.ad.requestAd) { onError && onError(new Error('Ad API missing')); return; }
+          s.ad.requestAd('midgame', {
+            adStarted: () => { onStart && onStart(); },
+            adFinished: () => { onFinish && onFinish(); },
+            adError: (err) => { onError && onError(err); }
+          });
+        });
+      },
+      requestRewarded({ onStart, onFinish, onError } = {}) {
+        if (!this.adsEnabled()) { onError && onError(new Error('Ads disabled locally')); return; }
+        this.safe(s => {
+          if (!s.ad || !s.ad.requestAd) { onError && onError(new Error('Ad API missing')); return; }
+          s.ad.requestAd('rewarded', {
+            adStarted: () => { onStart && onStart(); },
+            adFinished: () => { onFinish && onFinish(); },
+            adError: (err) => { onError && onError(err); }
+          });
+        });
+      }
+    };
+
+    // =====================
+    // Branding
+    // =====================
+    const BRAND = {
+      title: 'STACK VOID',
+      cta: 'ENTER VOID',
+      gameOver: 'VOIDED'
+    };
+
+    // =====================
+    // Content
+    // =====================
+    const THEMES = [
+      { id: 'neon', name: 'NEON', colors: ['#00ffff', '#7000ff', '#ff0070'], unlock: 0 },
+      { id: 'cyber', name: 'CYBER', colors: ['#ffcf00', '#ff0070', '#00ff70'], unlock: 20 },
+      { id: 'emerald', name: 'EMERALD', colors: ['#00ff70', '#00ffaa', '#008855'], unlock: 50 },
+      { id: 'ruby', name: 'RUBY', colors: ['#ff0000', '#aa0000', '#550000'], unlock: 100 },
+      { id: 'ghost', name: 'GHOST', colors: ['#ffffff', '#cccccc', '#999999'], unlock: 150 }
+    ];
+
+    const DIFFICULTIES = {
+      easy: { name: 'EASY', initial: 0.12, inc: 0.003, max: 0.35, mercy: 8, threshold: 0.45 },
+      medium: { name: 'NORMAL', initial: 0.18, inc: 0.006, max: 0.50, mercy: 5, threshold: 0.35 },
+      hard: { name: 'HARD', initial: 0.25, inc: 0.012, max: 0.70, mercy: 2, threshold: 0.20 }
+    };
+
+    const CONFIG = {
+      BLOCK_HEIGHT: 1,
+      INITIAL_SIZE: 4,
+      CAMERA_LERP: 0.1,
+      MAX_RUBBLE: 80,
+      INPUT_COOLDOWN: 150,
+
+      // Performance
+      PIXEL_RATIO_CAP: 1.5,      // keeps mobile GPUs happy
+      PIXEL_RATIO_LOW: 1.0,      // fallback when FPS drops
+      BLOOM_RES_DIV: 3,          // higher = cheaper (3 = ~1/3 res)
+      BLOOM_RES_DIV_LOW: 5,      // even cheaper when FPS drops
+      STARCOUNT_BACK: 9000,
+      STARCOUNT_MID: 4500,
+
+      // Adaptive tuning
+      ADAPT_INTERVAL: 0.75,      // seconds
+      FPS_LOW: 45,
+      FPS_HIGH: 56,
+
+      // Juice
+      SHAKE_GAMEOVER_DURATION: 0.35,
+      SHAKE_GAMEOVER_AMP: 0.9,
+      SHAKE_PERFECT_DURATION: 0.08,
+      SHAKE_PERFECT_AMP: 0.18
+    };
+
+    // =====================
+    // Persistence
+    // =====================
+    const STORAGE_KEYS = {
+      best: 'stack_best',
+      bestStreak: 'stack_best_streak',
+      muted: 'stack_muted',
+      theme: 'stack_theme',
+      difficulty: 'stack_difficulty'
+    };
+
+    // Back-compat: normalize older keys if present.
+    (function normalizeLegacyKeys(){
+      try {
+        const legacyBest = localStorage.getItem('stack_best');
+        const legacyStreak = localStorage.getItem('stack_best_streak');
+        if (legacyBest && !localStorage.getItem(STORAGE_KEYS.best)) localStorage.setItem(STORAGE_KEYS.best, legacyBest);
+        if (legacyStreak && !localStorage.getItem(STORAGE_KEYS.bestStreak)) localStorage.setItem(STORAGE_KEYS.bestStreak, legacyStreak);
+      } catch (e) {}
+    })();
+
+    function loadDifficulty() {
+      try {
+        const d = localStorage.getItem(STORAGE_KEYS.difficulty);
+        return (d && DIFFICULTIES[d]) ? d : 'medium';
+      } catch (e) {
+        return 'medium';
+      }
+    }
+
+    function loadThemeId() {
+      try {
+        const id = localStorage.getItem(STORAGE_KEYS.theme);
+        return id || THEMES[0].id;
+      } catch (e) {
+        return THEMES[0].id;
+      }
+    }
+
+    function pickThemeById(id) {
+      return THEMES.find(t => t.id === id) || THEMES[0];
+    }
+
+    function persistDifficulty(state) {
+      try { localStorage.setItem(STORAGE_KEYS.difficulty, state.difficulty); } catch (e) {}
+    }
+
+    function persistTheme(state) {
+      try { localStorage.setItem(STORAGE_KEYS.theme, state.currentTheme.id); } catch (e) {}
+    }
+
+    function persistMuted(state) {
+      try { localStorage.setItem(STORAGE_KEYS.muted, state.isMuted ? 'true' : 'false'); } catch (e) {}
+    }
+
+    function persistBest(state) {
+      try {
+        localStorage.setItem(STORAGE_KEYS.best, String(state.bestScore));
+        localStorage.setItem(STORAGE_KEYS.bestStreak, String(state.bestStreak));
+      } catch (e) {}
+    }
+
+    // Ensure stored theme is unlocked; if not, fall back safely.
+    function reconcileThemeUnlock(state) {
+      const savedId = loadThemeId();
+      const saved = pickThemeById(savedId);
+      if (state.bestScore < saved.unlock) {
+        const firstUnlocked = THEMES.find(t => state.bestScore >= t.unlock) || THEMES[0];
+        state.currentTheme = firstUnlocked;
+        try { localStorage.setItem(STORAGE_KEYS.theme, firstUnlocked.id); } catch (e) {}
+      } else {
+        state.currentTheme = saved;
+      }
+    }
+
+    // =====================
+    // Game State
+    // =====================
+    const state = {
+      // Rewarded continue (one per run)
+      continueUsed: false,
+      continuePending: false,
+      // If player taps a locked theme, we allow preview (visuals) but block starting until unlocked.
+      status: 'LOADING',
+      score: 0,
+      bestScore: 0,
+      bestStreak: 0,
+      combo: 0,
+      maxSessionCombo: 0,
+      currentTheme: pickThemeById(loadThemeId()),
+      difficulty: loadDifficulty(),
+      isMuted: (() => {
+        try { return localStorage.getItem(STORAGE_KEYS.muted) === 'true'; } catch (e) { return false; }
+      })(),
+      axis: 'x',
+      direction: 1,
+      speed: 0.18,
+      stack: [],
+      rubbleData: [],
+      rubbleFree: [],
+      rubbleActive: [],
+      activeBlock: null,
+      lastTime: 0,
+      lastInputTime: 0,
+      lastSpawnTime: 0,
+      cameraOrbit: 0,
+      flash: 0,
+      camPos: new THREE.Vector3(14, 8, 14),
+      camTarget: new THREE.Vector3(14, 8, 14),
+      lookTarget: new THREE.Vector3(0, 2, 0),
+
+      // Screen shake
+      shakeTime: 0,
+      shakeDuration: 0,
+      shakeAmp: 0,
+      shakeOffset: new THREE.Vector3(0, 0, 0),
+
+      // Simple perf monitor
+      fpsAvg: 60,
+      _fpsAcc: 0,
+      _fpsFrames: 0,
+
+      // Adaptive quality
+      _adaptAcc: 0,
+      qualityLow: false
+    };
+
+    const _v3 = new THREE.Vector3();
+    const _q = new THREE.Quaternion();
+    const _m4 = new THREE.Matrix4();
+
+    const AudioService = {
+      ctx: null,
+      scale: [261.63, 293.66, 329.63, 349.23, 392.0, 440.0, 493.88, 523.25],
+      init() {
+        try {
+          if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {}
+      },
+      playNote(step, isPerfect) {
+        if (!this.ctx || state.isMuted) return;
+        try {
+          if (this.ctx.state === 'suspended') this.ctx.resume();
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = isPerfect ? 'sine' : 'triangle';
+          const freq = this.scale[step % 8] * Math.pow(2, Math.floor(step / 8));
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+          gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.6);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.6);
+        } catch (e) {}
+      },
+      playGameOver() {
+        if (!this.ctx || state.isMuted) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(100, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.8);
+          gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.8);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.8);
+        } catch (e) {}
+      }
+    };
+
+    const UIManager = {
+      root: null,
+      getComboTitle(combo) {
+        if (combo < 2) return 'PERFECT';
+        if (combo < 4) return 'COOL!';
+        if (combo < 7) return 'SICK!!';
+        if (combo < 10) return 'INSANE!!!';
+        if (combo < 15) return 'GODLIKE!!!!';
+        return 'UNSTOPPABLE!!!!!';
+      },
+      toggleMute(e) {
+        if (e) e.stopPropagation();
+        state.isMuted = !state.isMuted;
+        persistMuted(state);
+        this.render();
+      },
+      render() {
+        if (!this.root) this.root = document.getElementById('ui-root');
+        this.root.innerHTML = '';
+        if (state.status === 'START') this.renderStart();
+        else if (state.status === 'PLAYING') this.renderHUD();
+        else if (state.status === 'GAMEOVER') this.renderGameOver();
+        else if (state.status === 'PAUSED') this.renderPaused();
+      },
+      renderMuteBtn() {
+        return `
+          <div class="floating-controls">
+            <div class="round-btn ${state.isMuted ? 'active' : ''}" onclick="window.gameToggleMute(event)">
+              ${state.isMuted ? '🔇' : '🔊'}
+            </div>
+          </div>
+        `;
+      },
+      renderStart() {
+        const overlay = document.createElement('div');
+        overlay.className = 'overlay';
+        overlay.innerHTML = `
+          ${this.renderMuteBtn()}
+          <div class="glass-panel">
+            <h1 style="font-weight: 900; letter-spacing: -1px; margin: 0; font-size: 2.2rem; text-shadow: 0 0 20px var(--neon-cyan)">${BRAND.title}</h1>
+
+            <div style="display:flex; justify-content:center; gap:30px; margin:15px 0 5px;">
+              <div style="text-align:center">
+                <span style="font-size:0.6rem; opacity:0.5; font-weight:800; text-transform:uppercase;">Best</span><br>
+                <span style="font-size:1.2rem; font-weight:900;">${state.bestScore}</span>
+              </div>
+              <div style="text-align:center">
+                <span style="font-size:0.6rem; opacity:0.5; font-weight:800; text-transform:uppercase;">Streak</span><br>
+                <span style="font-size:1.2rem; font-weight:900; color: var(--neon-pink);">${state.bestStreak}</span>
+              </div>
+            </div>
+
+            <span class="selector-label">Difficulty</span>
+            <div class="difficulty-grid">
+              <div class="diff-item ${state.difficulty === 'easy' ? 'selected' : ''}" onclick="window.gameSetDiff('easy', event)">EASY</div>
+              <div class="diff-item ${state.difficulty === 'medium' ? 'selected' : ''}" onclick="window.gameSetDiff('medium', event)">NORMAL</div>
+              <div class="diff-item ${state.difficulty === 'hard' ? 'selected' : ''}" onclick="window.gameSetDiff('hard', event)">HARD</div>
+            </div>
+
+            <span class="selector-label">Theme</span>
+            <div class="theme-grid" id="theme-grid"></div>
+
+            <button id="start-btn" class="btn btn-cta" style="margin-top: 20px" ${state.selectedThemeLocked ? 'disabled' : ''}>
+              ${state.selectedThemeLocked ? `LOCKED • UNLOCK AT ${state.selectedThemeUnlockAt}` : BRAND.cta}
+            </button>
+          </div>
+        `;
+        this.root.appendChild(overlay);
+        this.populateThemes();
+        document.getElementById('start-btn').onclick = (e) => {
+          e.stopPropagation();
+          if (state.selectedThemeLocked) return; // preview allowed, but can't start locked theme
+          startGame();
+        };
+      },
+      populateThemes() {
+        const grid = document.getElementById('theme-grid');
+        const isUnlocked = (t) => state.bestScore >= t.unlock;
+
+        THEMES.forEach((t) => {
+          const locked = !isUnlocked(t);
+          const el = document.createElement('div');
+          el.className = `theme-item ${locked ? 'locked' : ''} ${state.currentTheme.id === t.id ? 'selected' : ''}`;
+          el.style.background = `linear-gradient(135deg, ${t.colors[0]}, ${t.colors[2]})`;
+
+          // Always show lock state visually.
+          if (locked) {
+            el.innerHTML = `
+              <span class="lock-icon">🔒</span>
+              <span class="unlock-badge">${t.unlock}</span>
+            `;
+          }
+
+          // Click behavior:
+          // - Unlocked: selects & persists.
+          // - Locked: selects for PREVIEW only (no persist), and blocks Start.
+          el.onclick = (e) => {
+            e.stopPropagation();
+            state.currentTheme = t;
+            state.selectedThemeLocked = locked;
+            state.selectedThemeUnlockAt = t.unlock;
+
+            if (!locked) {
+              persistTheme(state);
+            }
+
+            this.render();
+            updateThemeVisuals();
+          };
+
+          grid.appendChild(el);
+        });
+      },
+
+      renderHUD() {
+        const hud = document.createElement('div');
+        hud.className = 'hud';
+        const comboColor = state.currentTheme.colors[0];
+        hud.innerHTML = `
+          <div class="hud-top-center">
+            <div class="score-huge" style="transform: scale(${1 + Math.min(state.combo * 0.05, 0.5)})">${state.score}</div>
+            ${state.combo > 0 ? `
+              <div class="combo-popup" style="color: ${comboColor}">${this.getComboTitle(state.combo)}</div>
+              <div class="streak-counter" style="color: ${comboColor}">${state.combo}X STREAK</div>
+            ` : ''}
+          </div>
+          <div class="round-btn" style="position:absolute; top:20px; left:20px; pointer-events:auto" onclick="window.gamePause(event)">⏸</div>
+          ${this.renderMuteBtn()}
+        `;
+        this.root.appendChild(hud);
+      },
+      renderGameOver() {
+        const overlay = document.createElement('div');
+        overlay.className = 'overlay';
+        overlay.innerHTML = `
+          <div class="glass-panel">
+            <h2 style="font-size: 2rem; color: var(--neon-fail); font-weight: 900;">${BRAND.gameOver}</h2>
+            <div style="display:flex; justify-content:space-around; margin:25px 0;">
+              <div>
+                <p style="font-size:0.6rem; opacity:0.5; font-weight:800; text-transform:uppercase;">Score</p>
+                <p style="font-size:2rem; font-weight:900;">${state.score}</p>
+              </div>
+              <div>
+                <p style="font-size:0.6rem; opacity:0.5; font-weight:800; text-transform:uppercase;">Best</p>
+                <p style="font-size:2rem; font-weight:900; color: var(--neon-cyan);">${state.bestScore}</p>
+              </div>
+            </div>
+            <button class="btn btn-cta" onclick="window.gameRestart(event)">RE-TRY</button>
+            <button class="btn btn-glass" ${state.continueUsed || state.continuePending ? 'disabled' : ''} onclick="window.gameContinue(event)">
+              ${state.continuePending ? 'LOADING AD…' : (state.continueUsed ? 'CONTINUE USED' : 'CONTINUE (REWARDED)')}
+            </button>
+            <button class="btn btn-glass" onclick="window.gameBackToMenu(event)">MENU</button>
+          </div>
+        `;
+        this.root.appendChild(overlay);
+      },
+      renderPaused() {
+        const overlay = document.createElement('div');
+        overlay.className = 'overlay';
+        overlay.innerHTML = `
+          <div class="glass-panel">
+            <h2 style="font-weight: 900; font-size: 2.2rem;">PAUSED</h2>
+            <button class="btn btn-cta" onclick="window.gameResume(event)">CONTINUE</button>
+            <button class="btn btn-glass" onclick="window.gameBackToMenu(event)">QUIT</button>
+          </div>
+        `;
+        this.root.appendChild(overlay);
+      }
+    };
+
+    // Expose functions for onclick handlers in strings
+    window.gameToggleMute = (e) => UIManager.toggleMute(e);
+    window.gameSetDiff = (d, e) => {
+      if (e) e.stopPropagation();
+      if (!DIFFICULTIES[d]) return;
+      state.difficulty = d;
+      persistDifficulty(state);
+      UIManager.render();
+    };
+    window.gamePause = (e) => {
+      if (e) e.stopPropagation();
+      if (state.status !== 'PLAYING') return;
+      state.status = 'PAUSED';
+      CG.gameplayStop();
+      UIManager.render();
+    };
+    window.gameResume = (e) => {
+      if (e) e.stopPropagation();
+      state.status = 'PLAYING';
+      CG.gameplayStart();
+      state.lastTime = performance.now();
+      UIManager.render();
+    };
+    window.gameRestart = (e) => {
+      if (e) e.stopPropagation();
+      startGame();
+    };
+    window.gameBackToMenu = (e) => {
+      if (e) e.stopPropagation();
+      backToMenu();
+    };
+
+    window.gameContinue = (e) => {
+      if (e) e.stopPropagation();
+      if (state.status !== 'GAMEOVER') return;
+      if (state.continueUsed || state.continuePending) return;
+      requestContinueRewarded();
+    };
+
+    let scene, camera, renderer, composer, bloomPass, pointLight, nebula, starLayerBack, starLayerMid, rubbleInstances;
+
+    // ---------------------
+    // Ads pacing
+    // ---------------------
+    let lastAdAt = 0;
+    const AD_COOLDOWN_MS = 75_000; // 75s between interstitials (tweak as needed)
+
+    function requestContinueRewarded() {
+      state.continuePending = true;
+      UIManager.render();
+
+      CG.requestRewarded({
+        onStart: () => {
+          // Silence audio while ad is playing.
+          state.isMuted = true;
+          persistMuted(state);
+          UIManager.render();
+        },
+        onFinish: () => {
+          state.continuePending = false;
+          state.continueUsed = true;
+          reviveAfterContinue();
+        },
+        onError: () => {
+          // Ad failed or blocked. Let player try again.
+          state.continuePending = false;
+          UIManager.render();
+        }
+      });
+    }
+
+    function reviveAfterContinue() {
+      // Remove the failing active block (if it exists) so we resume clean.
+      if (state.activeBlock) {
+        try {
+          scene.remove(state.activeBlock);
+          if (state.activeBlock.geometry) state.activeBlock.geometry.dispose();
+          const mat = state.activeBlock.material;
+          if (Array.isArray(mat)) mat.forEach(m => m && m.dispose && m.dispose());
+          else if (mat && mat.dispose) mat.dispose();
+        } catch (e) {}
+        state.activeBlock = null;
+      }
+
+      // Mercy reset: slow down for the next block so the continue feels fair.
+      const d = DIFFICULTIES[state.difficulty];
+      state.speed = d.initial;
+
+      state.status = 'PLAYING';
+      state.combo = 0;
+      state.flash = Math.max(state.flash, 0.35);
+      state.lastTime = performance.now();
+      state.lastInputTime = 0;
+
+      CG.gameplayStart();
+      UIManager.render();
+      spawnNewBlock();
+    }
+
+    function maybeShowGameOverAd() {
+      const now = Date.now();
+      if (now - lastAdAt < AD_COOLDOWN_MS) return;
+      if (!CG.adsEnabled()) return;
+
+      // Don’t block UI; request ad and keep the game in GAMEOVER state.
+      CG.requestInterstitial({
+        onStart: () => {
+          lastAdAt = now;
+          // Make sure audio is silent while ad is playing.
+          state.isMuted = true;
+          persistMuted(state);
+          UIManager.render();
+        },
+        onFinish: () => {
+          // Keep muted state as-is; player can unmute.
+        },
+        onError: () => {
+          // If ad fails, do nothing.
+        }
+      });
+    }
+
+    function adaptQuality() {
+      // If FPS drops, reduce pixel ratio and bloom cost.
+      if (!renderer) return;
+
+      if (!state.qualityLow && state.fpsAvg < CONFIG.FPS_LOW) {
+        state.qualityLow = true;
+        const pr = Math.min(window.devicePixelRatio || 1, CONFIG.PIXEL_RATIO_LOW);
+        renderer.setPixelRatio(pr);
+
+        if (bloomPass) {
+          bloomPass.enabled = false; // big win
+          bloomPass.setSize(window.innerWidth / CONFIG.BLOOM_RES_DIV_LOW, window.innerHeight / CONFIG.BLOOM_RES_DIV_LOW);
+        }
+      } else if (state.qualityLow && state.fpsAvg > CONFIG.FPS_HIGH) {
+        state.qualityLow = false;
+        const pr = Math.min(window.devicePixelRatio || 1, CONFIG.PIXEL_RATIO_CAP);
+        renderer.setPixelRatio(pr);
+
+        if (bloomPass) {
+          bloomPass.enabled = true;
+          bloomPass.setSize(window.innerWidth / CONFIG.BLOOM_RES_DIV, window.innerHeight / CONFIG.BLOOM_RES_DIV);
+        }
+      }
+    }
+
+    function triggerHaptics(pattern) {
+      try {
+        if (navigator && 'vibrate' in navigator) navigator.vibrate(pattern);
+      } catch (e) {}
+    }
+
+    function triggerShake(amp, duration) {
+      state.shakeAmp = Math.max(state.shakeAmp, amp);
+      state.shakeDuration = Math.max(state.shakeDuration, duration);
+      state.shakeTime = Math.max(state.shakeTime, duration);
+    }
+
+    function triggerCrashFeedback() {
+      // A quick “hit” on game over: shake + haptics.
+      triggerShake(CONFIG.SHAKE_GAMEOVER_AMP, CONFIG.SHAKE_GAMEOVER_DURATION);
+      triggerHaptics([35, 25, 110]);
+      state.flash = Math.max(state.flash, 0.65);
+    }
+
+    function triggerPerfectFeedback() {
+      // Micro-juice for perfect placements.
+      triggerShake(CONFIG.SHAKE_PERFECT_AMP, CONFIG.SHAKE_PERFECT_DURATION);
+      triggerHaptics(10);
+    }
+
+    // Lightweight “tests” to catch obvious regressions while iterating in canvas.
+    function runDevTests() {
+      const lines = [];
+      const assert = (name, cond, detail = '') => {
+        lines.push(`${cond ? '✅' : '❌'} ${name}${detail ? ' ' + detail : ''}`);
+        if (!cond) console.warn('[TEST FAIL]', name, detail);
+      };
+
+      assert('BRAND.title is set', typeof BRAND.title === 'string' && BRAND.title.length > 0);
+      assert('Themes array ok', Array.isArray(THEMES) && THEMES.length >= 3);
+      assert('Difficulties include easy/medium/hard', !!DIFFICULTIES.easy && !!DIFFICULTIES.medium && !!DIFFICULTIES.hard);
+      assert('Difficulty value valid', !!DIFFICULTIES[state.difficulty], `(got ${state.difficulty})`);
+      assert('Theme object valid', !!state.currentTheme && typeof state.currentTheme.id === 'string');
+      assert('Theme exists in list', THEMES.some(t => t.id === state.currentTheme.id), `(id ${state.currentTheme?.id})`);
+      assert('Locked preview state is consistent', state.selectedThemeLocked === (state.bestScore < state.currentTheme.unlock), `(locked=${state.selectedThemeLocked}, best=${state.bestScore}, unlock=${state.currentTheme.unlock})`);
+
+      // If we have a foundation block, its color should match theme[0] right away.
+      if (state.stack && state.stack[0] && state.stack[0].material && state.stack[0].material.color) {
+        const expected = new THREE.Color(state.currentTheme.colors[0]);
+        assert('Foundation matches theme[0]', state.stack[0].material.color.equals(expected));
+      }
+
+      // After we load bestScore, we reconcile theme. This just checks unlock thresholds are sane.
+      const unlocksSorted = THEMES.map(t => t.unlock).slice().sort((a,b) => a-b);
+      assert('Theme unlocks are non-decreasing', unlocksSorted.every((v,i,a)=> i===0 || v>=a[i-1]));
+
+      const el = document.getElementById('dev-tests');
+      if (el) {
+        el.textContent = lines.join('\n');
+        // el.style.display = 'block';
+      }
+    }
+
+    async function initGameData() {
+      try {
+        const localBest = localStorage.getItem(STORAGE_KEYS.best);
+        const localStreak = localStorage.getItem(STORAGE_KEYS.bestStreak);
+        state.bestScore = localBest ? parseInt(localBest) : 0;
+        state.bestStreak = localStreak ? parseInt(localStreak) : 0;
+      } catch (e) {
+        state.bestScore = 0;
+        state.bestStreak = 0;
+      }
+
+      // After bestScore is known, enforce that selected theme is unlocked.
+      reconcileThemeUnlock(state);
+
+      const loader = document.getElementById('loader-fill');
+      if (loader) loader.style.width = '100%';
+      await new Promise((r) => setTimeout(r, 600));
+
+      document.getElementById('loading-screen').style.display = 'none';
+      // CrazyGames: mark loading complete only when we can show the menu.
+      CG.loadingStop();
+      // Ensure selectedThemeLocked reflects current selection on first render.
+      state.selectedThemeLocked = state.bestScore < state.currentTheme.unlock;
+      state.selectedThemeUnlockAt = state.currentTheme.unlock;
+
+      state.status = 'START';
+      UIManager.render();
+    }
+
+    // NOTE: initEngine is declared ONCE
+    function initEngine() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000005);
+      scene.fog = new THREE.FogExp2(0x000005, 0.008);
+
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CONFIG.PIXEL_RATIO_CAP));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      document.getElementById('root').appendChild(renderer.domElement);
+
+      composer = new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene, camera));
+      bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth / CONFIG.BLOOM_RES_DIV, window.innerHeight / CONFIG.BLOOM_RES_DIV),
+        1.1,
+        0.35,
+        0.85
+      );
+      composer.addPass(bloomPass);
+      composer.addPass(new OutputPass());
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+      scene.add(new THREE.HemisphereLight(0x00ffff, 0xff00ff, 0.5));
+      pointLight = new THREE.PointLight(0x00ffff, 6, 60);
+      scene.add(pointLight);
+
+      const nebulaGeom = new THREE.SphereGeometry(400, 32, 32);
+      const nebulaMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true, transparent: true, opacity: 0.25 });
+      const count = nebulaGeom.attributes.position.count;
+      const colors = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const c = new THREE.Color().setHSL(Math.random() * 0.15 + 0.55, 0.6, 0.25);
+        colors[i * 3] = c.r;
+        colors[i * 3 + 1] = c.g;
+        colors[i * 3 + 2] = c.b;
+      }
+      nebulaGeom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      nebula = new THREE.Mesh(nebulaGeom, nebulaMat);
+      scene.add(nebula);
+
+      starLayerBack = createStarfield(CONFIG.STARCOUNT_BACK, 0.55, 250, 0.55, true);
+      scene.add(starLayerBack);
+      starLayerMid = createStarfield(CONFIG.STARCOUNT_MID, 0.9, 180, 0.8, true);
+      scene.add(starLayerMid);
+
+      const rubbleGeom = new THREE.BoxGeometry(1, 1, 1);
+      const rubbleMat = new THREE.MeshStandardMaterial({ metalness: 0.5, roughness: 0.2, transparent: true, opacity: 0.8 });
+      rubbleInstances = new THREE.InstancedMesh(rubbleGeom, rubbleMat, CONFIG.MAX_RUBBLE);
+      rubbleInstances.frustumCulled = false;
+      state.rubbleFree.length = 0;
+      state.rubbleActive.length = 0;
+      for (let i = 0; i < CONFIG.MAX_RUBBLE; i++) {
+        rubbleInstances.setMatrixAt(i, new THREE.Matrix4().makeTranslation(0, -500, 0));
+        rubbleInstances.setColorAt(i, new THREE.Color(0xffffff));
+        state.rubbleFree.push(i);
+        state.rubbleData[i] = {
+          isActive: false,
+          position: new THREE.Vector3(0, -500, 0),
+          rotation: new THREE.Euler(),
+          scale: new THREE.Vector3(1, 1, 1),
+          velocity: new THREE.Vector3(),
+          angularVelocity: new THREE.Vector3()
+        };
+      }
+      scene.add(rubbleInstances);
+
+      createFoundation();
+      requestAnimationFrame(animate);
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        composer.setSize(window.innerWidth, window.innerHeight);
+
+        const div = state.qualityLow ? CONFIG.BLOOM_RES_DIV_LOW : CONFIG.BLOOM_RES_DIV;
+        if (bloomPass) bloomPass.setSize(window.innerWidth / div, window.innerHeight / div);
+
+        const prCap = state.qualityLow ? CONFIG.PIXEL_RATIO_LOW : CONFIG.PIXEL_RATIO_CAP;
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, prCap));
+      });
+
+      const handleInput = (e) => {
+        if (state.status !== 'PLAYING') return;
+        if (e.target.tagName === 'BUTTON' || e.target.closest('.glass-panel') || e.target.closest('.round-btn')) return;
+        const now = performance.now();
+        if (now - state.lastInputTime < CONFIG.INPUT_COOLDOWN) return;
+        if (now - state.lastSpawnTime < 200) return;
+        state.lastInputTime = now;
+        placeBlock();
+      };
+
+      window.addEventListener('mousedown', (e) => {
+        if (e.button === 0) handleInput(e);
+      });
+
+      window.addEventListener(
+        'touchstart',
+        (e) => {
+          if (!e.target.closest('.glass-panel') && !e.target.closest('.round-btn')) {
+            e.preventDefault();
+            handleInput(e);
+          }
+        },
+        { passive: false }
+      );
+    }
+
+    function createStarfield(count, size, dist, opacity, isDistant) {
+      const geom = new THREE.BufferGeometry();
+      const pos = new Float32Array(count * 3);
+      const cols = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const r = dist + (isDistant ? Math.random() * 120 : Math.random() * 60);
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+        pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        pos[i * 3 + 2] = r * Math.cos(phi);
+        const hue = Math.random() > 0.8 ? Math.random() * 0.2 + 0.5 : 0;
+        const sat = hue > 0 ? 0.4 : 0;
+        const brightness = 0.6 + Math.random() * 0.4;
+        const color = new THREE.Color().setHSL(hue, sat, brightness);
+        cols[i * 3] = color.r;
+        cols[i * 3 + 1] = color.g;
+        cols[i * 3 + 2] = color.b;
+      }
+      geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geom.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+      return new THREE.Points(
+        geom,
+        new THREE.PointsMaterial({ size, vertexColors: true, transparent: true, opacity, sizeAttenuation: true, fog: false })
+      );
+    }
+
+    function createGlassMaterial(color) {
+      // MeshPhysicalMaterial + transmission is expensive on mobile.
+      // StandardMaterial keeps the neon vibe while staying smooth.
+      return new THREE.MeshStandardMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: 0.9,
+        metalness: 0.25,
+        roughness: 0.18,
+        transparent: true,
+        opacity: 0.92
+      });
+    });
+    }
+
+    function createFoundation() {
+      // Foundation should reflect the currently selected theme immediately.
+      const geom = new THREE.BoxGeometry(CONFIG.INITIAL_SIZE, CONFIG.BLOCK_HEIGHT, CONFIG.INITIAL_SIZE);
+      const baseColor = new THREE.Color(state.currentTheme.colors[0]);
+      const mat = createGlassMaterial(baseColor);
+      const mesh = new THREE.Mesh(geom, mat);
+      scene.add(mesh);
+      state.stack.push(mesh);
+      // Keep visuals in sync right away (especially on theme change in START screen).
+      updateThemeVisuals();
+    }
+
+    function spawnNewBlock() {
+      const prev = state.stack[state.stack.length - 1];
+      state.axis = state.axis === 'x' ? 'z' : 'x';
+      const color = new THREE.Color(state.currentTheme.colors[state.stack.length % state.currentTheme.colors.length]);
+      const geom = new THREE.BoxGeometry(prev.geometry.parameters.width, CONFIG.BLOCK_HEIGHT, prev.geometry.parameters.depth);
+      const mesh = new THREE.Mesh(geom, createGlassMaterial(color));
+      mesh.position.y = state.stack.length * CONFIG.BLOCK_HEIGHT;
+      const offset = Math.random() > 0.5 ? 12 : -12;
+      state.direction = offset > 0 ? -1 : 1;
+      mesh.position[state.axis] = offset;
+      mesh.position[state.axis === 'x' ? 'z' : 'x'] = prev.position[state.axis === 'x' ? 'z' : 'x'];
+      scene.add(mesh);
+      state.activeBlock = mesh;
+      state.lastSpawnTime = performance.now();
+    }
+
+    function placeBlock() {
+      if (!state.activeBlock) return;
+      const active = state.activeBlock;
+      const prev = state.stack[state.stack.length - 1];
+      const diffConfig = DIFFICULTIES[state.difficulty];
+      const axis = state.axis;
+      const size = axis === 'x' ? active.geometry.parameters.width : active.geometry.parameters.depth;
+      let delta = active.position[axis] - prev.position[axis];
+
+      const threshold = state.stack.length <= diffConfig.mercy ? diffConfig.threshold : 0.15;
+      if (Math.abs(delta) < threshold) delta = 0;
+
+      const absDelta = Math.abs(delta);
+      const overlap = size - absDelta;
+      if (overlap <= 0.05) {
+        gameOver();
+        return;
+      }
+
+      if (delta === 0) {
+        active.position[axis] = prev.position[axis];
+        state.combo++;
+        if (state.combo > state.maxSessionCombo) state.maxSessionCombo = state.combo;
+        state.flash = 0.5;
+        triggerPerfectFeedback();
+        AudioService.playNote(state.stack.length, true);
+      } else {
+        state.combo = 0;
+        spawnRubble(active, prev, axis, delta, overlap);
+        active.geometry.dispose();
+        const other = axis === 'x' ? active.geometry.parameters.depth : active.geometry.parameters.width;
+        active.geometry =
+          axis === 'x'
+            ? new THREE.BoxGeometry(overlap, CONFIG.BLOCK_HEIGHT, other)
+            : new THREE.BoxGeometry(other, CONFIG.BLOCK_HEIGHT, overlap);
+        active.position[axis] = prev.position[axis] + delta / 2;
+        AudioService.playNote(state.stack.length, false);
+      }
+
+      state.stack.push(active);
+      state.activeBlock = null;
+      state.score++;
+      state.speed = Math.min(diffConfig.max, state.speed + diffConfig.inc);
+      UIManager.render();
+      spawnNewBlock();
+    }
+
+    function spawnRubble(active, prev, axis, delta, overlap) {
+      const params = active.geometry.parameters;
+      const size = axis === 'x' ? params.width : params.depth;
+      const other = axis === 'x' ? params.depth : params.width;
+      const rSize = size - overlap;
+
+      // O(1) rubble allocation (no findIndex in hot path)
+      const idx = state.rubbleFree.length ? state.rubbleFree.pop() : -1;
+      if (idx === -1) return;
+
+      const rPos = active.position.clone();
+      rPos[axis] = prev.position[axis] + (size / 2 + rSize / 2) * Math.sign(delta);
+
+      const rScale = axis === 'x'
+        ? new THREE.Vector3(rSize, CONFIG.BLOCK_HEIGHT, other)
+        : new THREE.Vector3(other, CONFIG.BLOCK_HEIGHT, rSize);
+
+      state.rubbleData[idx].isActive = true;
+      state.rubbleActive.push(idx);
+      state.rubbleData[idx].position.copy(rPos);
+      state.rubbleData[idx].scale.copy(rScale);
+      state.rubbleData[idx].rotation.set(0, 0, 0);
+      state.rubbleData[idx].velocity.set(0, -10, 0);
+      state.rubbleData[idx].angularVelocity.set(Math.random() * 8 - 4, Math.random() * 4 - 2, Math.random() * 8 - 4);
+
+      rubbleInstances.setColorAt(idx, active.material.color);
+      rubbleInstances.instanceColor.needsUpdate = true;
+    }
+
+    function gameOver() {
+      state.status = 'GAMEOVER';
+      state.continuePending = false;
+
+      if (state.score > state.bestScore) state.bestScore = state.score;
+      if (state.maxSessionCombo > state.bestStreak) state.bestStreak = state.maxSessionCombo;
+
+      // Leaving gameplay context.
+      CG.gameplayStop();
+
+      // Juice
+      triggerCrashFeedback();
+
+      AudioService.playGameOver();
+      persistBest(state);
+      reconcileThemeUnlock(state);
+      UIManager.render();
+
+      // Optional: show an interstitial on game over with a cooldown.
+      maybeShowGameOverAd();
+    }
+
+    function startGame() {
+      // Fresh run resets continue
+      state.continueUsed = false;
+      state.continuePending = false;
+      cleanup();
+      AudioService.init();
+      const d = DIFFICULTIES[state.difficulty];
+
+      state.status = 'PLAYING';
+      // CrazyGames: gameplay starts when an actual run starts (not menu).
+      CG.gameplayStart();
+      state.score = 0;
+      state.combo = 0;
+      state.maxSessionCombo = 0;
+      state.speed = d.initial;
+      state.axis = 'x';
+      state.camPos.set(14, 8, 14);
+      state.camTarget.set(14, 8, 14);
+      state.lookTarget.set(0, 2, 0);
+
+      createFoundation();
+      // Ensure the first visible block matches the selected theme immediately.
+      updateThemeVisuals();
+
+      UIManager.render();
+      spawnNewBlock();
+    }
+
+    function backToMenu() {
+      // Leaving gameplay context.
+      CG.gameplayStop();
+      cleanup();
+      state.status = 'START';
+      createFoundation();
+      updateThemeVisuals();
+      UIManager.render();
+    }
+
+    function cleanup() {
+      const disposeMaterial = (mat) => {
+        if (!mat) return;
+        // Dispose any textures attached to the material to avoid GPU leaks.
+        const texProps = [
+          'map','alphaMap','aoMap','bumpMap','displacementMap','emissiveMap','envMap',
+          'lightMap','metalnessMap','normalMap','roughnessMap','specularMap'
         ];
+        for (const k of texProps) {
+          const t = mat[k];
+          if (t && typeof t.dispose === 'function') t.dispose();
+        }
+        if (typeof mat.dispose === 'function') mat.dispose();
+      };
 
-        const DIFFICULTIES = {
-            easy: { name: 'EASY', initial: 0.12, inc: 0.003, max: 0.35, mercy: 8, threshold: 0.45 },
-            medium: { name: 'NORMAL', initial: 0.18, inc: 0.006, max: 0.50, mercy: 5, threshold: 0.35 },
-            hard: { name: 'HARD', initial: 0.25, inc: 0.012, max: 0.70, mercy: 2, threshold: 0.20 }
-        };
+      const disposeMesh = (m) => {
+        if (!m) return;
+        scene.remove(m);
+        if (m.geometry && typeof m.geometry.dispose === 'function') m.geometry.dispose();
+        if (Array.isArray(m.material)) m.material.forEach(disposeMaterial);
+        else disposeMaterial(m.material);
+      };
 
-        const CONFIG = {
-            BLOCK_HEIGHT: 1,
-            INITIAL_SIZE: 4,
-            CAMERA_LERP: 0.1,
-            MAX_RUBBLE: 100,
-            INPUT_COOLDOWN: 150
-        };
+      // Dispose stack meshes (geometry + material)
+      state.stack.forEach(disposeMesh);
 
-        const state = {
-            status: 'LOADING', 
-            score: 0,
-            bestScore: 0,
-            bestStreak: 0,
-            combo: 0,
-            maxSessionCombo: 0,
-            currentTheme: THEMES[0],
-            difficulty: 'medium',
-            isMuted: localStorage.getItem('stack_muted') === 'true',
-            axis: 'x',
-            direction: 1,
-            speed: 0.18,
-            stack: [],
-            rubbleData: [], 
-            activeBlock: null,
-            lastTime: 0,
-            lastInputTime: 0,
-            lastSpawnTime: 0,
-            cameraOrbit: 0,
-            flash: 0,
-            camPos: new THREE.Vector3(14, 8, 14),
-            camTarget: new THREE.Vector3(14, 8, 14),
-            lookTarget: new THREE.Vector3(0, 2, 0)
-        };
+      // Dispose active block if present
+      if (state.activeBlock) disposeMesh(state.activeBlock);
 
-        const _v3 = new THREE.Vector3();
-        const _q = new THREE.Quaternion();
-        const _m4 = new THREE.Matrix4();
+      state.stack = [];
+      state.activeBlock = null;
 
-        const AudioService = {
-            ctx: null,
-            scale: [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25],
-            init() { 
-                try { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
-            },
-            playNote(step, isPerfect) {
-                if (!this.ctx || state.isMuted) return;
-                try {
-                    if (this.ctx.state === 'suspended') this.ctx.resume();
-                    const osc = this.ctx.createOscillator();
-                    const gain = this.ctx.createGain();
-                    osc.type = isPerfect ? 'sine' : 'triangle';
-                    const freq = this.scale[step % 8] * Math.pow(2, Math.floor(step / 8));
-                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-                    gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.6);
-                    osc.connect(gain); gain.connect(this.ctx.destination);
-                    osc.start(); osc.stop(this.ctx.currentTime + 0.6);
-                } catch(e) {}
-            },
-            playGameOver() {
-                if (!this.ctx || state.isMuted) return;
-                try {
-                    const osc = this.ctx.createOscillator();
-                    const gain = this.ctx.createGain();
-                    osc.type = 'sawtooth';
-                    osc.frequency.setValueAtTime(100, this.ctx.currentTime);
-                    osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.8);
-                    gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
-                    gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.8);
-                    osc.connect(gain); gain.connect(this.ctx.destination);
-                    osc.start(); osc.stop(this.ctx.currentTime + 0.8);
-                } catch(e) {}
-            }
-        };
+      // Reset rubble pool (InstancedMesh materials/geometries are intentionally kept
+      // alive for reuse; they are created once in initEngine).
+      state.rubbleFree.length = 0;
+      state.rubbleActive.length = 0;
+      for (let i = 0; i < CONFIG.MAX_RUBBLE; i++) {
+        state.rubbleData[i].isActive = false;
+        state.rubbleFree.push(i);
+        _m4.makeTranslation(0, -500, 0);
+        rubbleInstances.setMatrixAt(i, _m4);
+      }
+      rubbleInstances.instanceMatrix.needsUpdate = true;
+    });
+      if (state.activeBlock) {
+        scene.remove(state.activeBlock);
+        if (state.activeBlock.geometry) state.activeBlock.geometry.dispose();
+      }
+      state.stack = [];
+      state.activeBlock = null;
 
-        const UIManager = {
-            root: null,
-            getComboTitle(combo) {
-                if (combo < 2) return "PERFECT";
-                if (combo < 4) return "COOL!";
-                if (combo < 7) return "SICK!!";
-                if (combo < 10) return "INSANE!!!";
-                if (combo < 15) return "GODLIKE!!!!";
-                return "UNSTOPPABLE!!!!!";
-            },
-            toggleMute(e) {
-                if(e) e.stopPropagation();
-                state.isMuted = !state.isMuted;
-                localStorage.setItem('stack_muted', state.isMuted);
-                this.render();
-            },
-            render() {
-                if (!this.root) this.root = document.getElementById('ui-root');
-                this.root.innerHTML = '';
-                if (state.status === 'START') this.renderStart();
-                else if (state.status === 'PLAYING') this.renderHUD();
-                else if (state.status === 'GAMEOVER') this.renderGameOver();
-                else if (state.status === 'PAUSED') this.renderPaused();
-            },
-            renderMuteBtn() {
-                return `
-                    <div class="floating-controls">
-                        <div class="round-btn ${state.isMuted ? 'active' : ''}" onclick="window.gameToggleMute(event)">
-                            ${state.isMuted ? '🔇' : '🔊'}
-                        </div>
-                    </div>
-                `;
-            },
-            renderStart() {
-                const overlay = document.createElement('div');
-                overlay.className = 'overlay';
-                overlay.innerHTML = `
-                    ${this.renderMuteBtn()}
-                    <div class="glass-panel">
-                        <h1 style="font-weight: 900; letter-spacing: -1px; margin: 0; font-size: 2.2rem; text-shadow: 0 0 20px var(--neon-cyan)">STACK & SNAP</h1>
-                        
-                        <div style="display: flex; justify-content: center; gap: 30px; margin: 15px 0 5px;">
-                            <div style="text-align: center"><span style="font-size: 0.6rem; opacity: 0.5; font-weight: 800; text-transform: uppercase;">Best</span><br><span style="font-size: 1.2rem; font-weight: 900;">${state.bestScore}</span></div>
-                            <div style="text-align: center"><span style="font-size: 0.6rem; opacity: 0.5; font-weight: 800; text-transform: uppercase;">Streak</span><br><span style="font-size: 1.2rem; font-weight: 900; color: #ff00ff;">${state.bestStreak}</span></div>
-                        </div>
+      // Reset rubble pool
+      state.rubbleFree.length = 0;
+      state.rubbleActive.length = 0;
+      for (let i = 0; i < CONFIG.MAX_RUBBLE; i++) {
+        state.rubbleData[i].isActive = false;
+        state.rubbleFree.push(i);
+        _m4.makeTranslation(0, -500, 0);
+        rubbleInstances.setMatrixAt(i, _m4);
+      }
+      rubbleInstances.instanceMatrix.needsUpdate = true;
+    }
 
-                        <span class="selector-label">Difficulty</span>
-                        <div class="difficulty-grid">
-                            <div class="diff-item ${state.difficulty === 'easy' ? 'selected' : ''}" onclick="window.gameSetDiff('easy', event)">EASY</div>
-                            <div class="diff-item ${state.difficulty === 'medium' ? 'selected' : ''}" onclick="window.gameSetDiff('medium', event)">NORMAL</div>
-                            <div class="diff-item ${state.difficulty === 'hard' ? 'selected' : ''}" onclick="window.gameSetDiff('hard', event)">HARD</div>
-                        </div>
+    function updateThemeVisuals() {
+      state.stack.forEach((m, i) => {
+        const c = new THREE.Color(state.currentTheme.colors[i % state.currentTheme.colors.length]);
+        m.material.color.copy(c);
+        m.material.emissive.copy(c);
+      });
+    }
 
-                        <span class="selector-label">Theme</span>
-                        <div class="theme-grid" id="theme-grid"></div>
-                        
-                        <button id="start-btn" class="btn btn-cta" style="margin-top: 20px">ENTER VOID</button>
-                    </div>
-                `;
-                this.root.appendChild(overlay);
-                this.populateThemes();
-                document.getElementById('start-btn').onclick = (e) => { e.stopPropagation(); startGame(); };
-            },
-            populateThemes() {
-                const grid = document.getElementById('theme-grid');
-                THEMES.forEach(t => {
-                    const isLocked = state.bestScore < t.unlock;
-                    const el = document.createElement('div');
-                    el.className = `theme-item ${isLocked ? 'locked' : ''} ${state.currentTheme.id === t.id ? 'selected' : ''}`;
-                    el.style.background = `linear-gradient(135deg, ${t.colors[0]}, ${t.colors[2]})`;
-                    if (isLocked) el.innerHTML = `<span class="unlock-badge">${t.unlock}</span>`;
-                    else el.onclick = (e) => { e.stopPropagation(); state.currentTheme = t; this.render(); updateThemeVisuals(); };
-                    grid.appendChild(el);
-                });
-            },
-            renderHUD() {
-                const hud = document.createElement('div');
-                hud.className = 'hud';
-                const comboColor = state.currentTheme.colors[0];
-                hud.innerHTML = `
-                    <div class="hud-top-center">
-                        <div class="score-huge" style="transform: scale(${1 + Math.min(state.combo * 0.05, 0.5)})">${state.score}</div>
-                        ${state.combo > 0 ? `
-                            <div class="combo-popup" style="color: ${comboColor}">${this.getComboTitle(state.combo)}</div>
-                            <div class="streak-counter" style="color: ${comboColor}">${state.combo}X STREAK</div>
-                        ` : ''}
-                    </div>
-                    <div class="round-btn" style="position: absolute; top: 20px; left: 20px; pointer-events: auto" onclick="window.gamePause(event)">⏸</div>
-                    ${this.renderMuteBtn()}
-                `;
-                this.root.appendChild(hud);
-            },
-            renderGameOver() {
-                const overlay = document.createElement('div');
-                overlay.className = 'overlay';
-                overlay.innerHTML = `
-                    <div class="glass-panel">
-                        <h2 style="font-size: 2rem; color: #ff0070; font-weight: 900;">CRASHED!</h2>
-                        <div style="display: flex; justify-content: space-around; margin: 25px 0;">
-                            <div><p style="font-size: 0.6rem; opacity: 0.5; font-weight: 800; text-transform: uppercase;">Score</p><p style="font-size: 2rem; font-weight: 900;">${state.score}</p></div>
-                            <div><p style="font-size: 0.6rem; opacity: 0.5; font-weight: 800; text-transform: uppercase;">Best</p><p style="font-size: 2rem; font-weight: 900; color: var(--neon-cyan);">${state.bestScore}</p></div>
-                        </div>
-                        <button class="btn btn-cta" onclick="window.gameRestart(event)">RE-TRY</button>
-                        <button class="btn btn-glass" onclick="window.gameBackToMenu(event)">MENU</button>
-                    </div>
-                `;
-                this.root.appendChild(overlay);
-            },
-            renderPaused() {
-                const overlay = document.createElement('div');
-                overlay.className = 'overlay';
-                overlay.innerHTML = `
-                    <div class="glass-panel">
-                        <h2 style="font-weight: 900; font-size: 2.2rem;">PAUSED</h2>
-                        <button class="btn btn-cta" onclick="window.gameResume(event)">CONTINUE</button>
-                        <button class="btn btn-glass" onclick="window.gameBackToMenu(event)">QUIT</button>
-                    </div>
-                `;
-                this.root.appendChild(overlay);
-            }
-        };
+    function animate(time) {
+      // Remove last frame's shake offset so we don't drift.
+      if (camera && state.shakeOffset) camera.position.sub(state.shakeOffset);
+      state.shakeOffset.set(0, 0, 0);
 
-        // Expose functions for onclick handlers in strings
-        window.gameToggleMute = (e) => UIManager.toggleMute(e);
-        window.gameSetDiff = (d, e) => { if(e) e.stopPropagation(); state.difficulty = d; UIManager.render(); };
-        window.gamePause = (e) => { if(e) e.stopPropagation(); state.status = 'PAUSED'; UIManager.render(); };
-        window.gameResume = (e) => { if(e) e.stopPropagation(); state.status = 'PLAYING'; state.lastTime = performance.now(); UIManager.render(); };
-        window.gameRestart = (e) => { if(e) e.stopPropagation(); startGame(); };
-        window.gameBackToMenu = (e) => { if(e) e.stopPropagation(); backToMenu(); };
+      
+      requestAnimationFrame(animate);
+      if (!state.lastTime) state.lastTime = time;
+      const dt = Math.min((time - state.lastTime) / 1000, 0.04);
+      state.lastTime = time;
 
-        let scene, camera, renderer, composer, pointLight, nebula, starLayerBack, starLayerMid, rubbleInstances;
+      if (nebula) nebula.rotation.y += 0.005 * dt;
+      if (starLayerBack) starLayerBack.rotation.y += 0.001 * dt;
+      if (starLayerMid) starLayerMid.rotation.y += 0.0025 * dt;
 
-        async function initGameData() {
-            try {
-                const localBest = localStorage.getItem('stack_best');
-                const localStreak = localStorage.getItem('stack_best_streak');
-                state.bestScore = localBest ? parseInt(localBest) : 0;
-                state.bestStreak = localStreak ? parseInt(localStreak) : 0;
-            } catch(e) {}
-            const loader = document.getElementById('loader-fill');
-            if(loader) loader.style.width = '100%';
-            await new Promise(r => setTimeout(r, 600));
-            document.getElementById('loading-screen').style.display = 'none';
-            state.status = 'START';
-            UIManager.render();
+      if (state.status === 'START') {
+        state.cameraOrbit += 0.12 * dt;
+        state.camTarget.set(16 * Math.cos(state.cameraOrbit), 8, 16 * Math.sin(state.cameraOrbit));
+        camera.position.lerp(state.camTarget, 0.035);
+        camera.lookAt(state.lookTarget);
+      } else {
+        const h = state.stack.length * CONFIG.BLOCK_HEIGHT;
+        state.camTarget.set(13, h + 7.5, 13);
+        state.lookTarget.lerp(_v3.set(0, h, 0), CONFIG.CAMERA_LERP);
+        camera.position.lerp(state.camTarget, CONFIG.CAMERA_LERP);
+        camera.lookAt(state.lookTarget.x, state.lookTarget.y - 2.8, state.lookTarget.z);
+      }
+
+      // Apply screen shake (after base camera updates)
+      if (state.shakeTime > 0) {
+        state.shakeTime = Math.max(0, state.shakeTime - dt);
+        const t = state.shakeDuration > 0 ? (state.shakeTime / state.shakeDuration) : 0;
+        const falloff = t * t; // smoother ease-out
+        const amp = state.shakeAmp * falloff;
+        const ox = (Math.random() - 0.5) * amp;
+        const oy = (Math.random() - 0.5) * amp * 0.6;
+        const oz = (Math.random() - 0.5) * amp;
+        state.shakeOffset.set(ox, oy, oz);
+        camera.position.add(state.shakeOffset);
+
+        if (state.shakeTime === 0) {
+          state.shakeAmp = 0;
+          state.shakeDuration = 0;
+        }
+      }
+
+      if (state.flash > 0) {
+        renderer.toneMappingExposure = 1.0 + state.flash * 0.6;
+        state.flash -= 2.0 * dt;
+      } else {
+        renderer.toneMappingExposure = 1.0;
+      }
+
+      if (state.status === 'PLAYING' && state.activeBlock) {
+        state.activeBlock.position[state.axis] += state.direction * state.speed * (dt * 60);
+        if (Math.abs(state.activeBlock.position[state.axis]) > 13) {
+          state.direction *= -1;
+          state.activeBlock.position[state.axis] = 13 * Math.sign(state.activeBlock.position[state.axis]);
+        }
+        pointLight.position.copy(state.activeBlock.position).y += 2.5;
+        pointLight.color.copy(state.activeBlock.material.color);
+      }
+
+      let rubUpdate = false;
+      // Iterate only active rubble indices (avoids scanning all MAX_RUBBLE each frame)
+      for (let a = state.rubbleActive.length - 1; a >= 0; a--) {
+        const i = state.rubbleActive[a];
+        const r = state.rubbleData[i];
+        if (!r.isActive) {
+          const last = state.rubbleActive.pop();
+          if (a < state.rubbleActive.length) state.rubbleActive[a] = last;
+          continue;
         }
 
-        function initEngine() {
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x000005);
-            scene.fog = new THREE.FogExp2(0x000005, 0.008); 
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            document.getElementById('root').appendChild(renderer.domElement);
+        r.position.y += r.velocity.y * (dt * 5);
+        r.velocity.y -= 25 * dt;
+        r.rotation.x += r.angularVelocity.x * dt;
+        r.rotation.y += r.angularVelocity.y * dt;
+        r.rotation.z += r.angularVelocity.z * dt;
 
-            composer = new EffectComposer(renderer);
-            composer.addPass(new RenderPass(scene, camera));
-            const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2), 1.2, 0.4, 0.85);
-            composer.addPass(bloomPass);
-            composer.addPass(new OutputPass());
+        if (r.position.y < -120) {
+          r.isActive = false;
+          _m4.makeTranslation(0, -500, 0);
+          rubbleInstances.setMatrixAt(i, _m4);
+          rubUpdate = true;
 
-            scene.add(new THREE.AmbientLight(0xffffff, 0.4)); 
-            scene.add(new THREE.HemisphereLight(0x00ffff, 0xff00ff, 0.5));
-            pointLight = new THREE.PointLight(0x00ffff, 6, 60);
-            scene.add(pointLight);
-
-            const nebulaGeom = new THREE.SphereGeometry(400, 32, 32);
-            const nebulaMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true, transparent: true, opacity: 0.25 });
-            const count = nebulaGeom.attributes.position.count;
-            const colors = new Float32Array(count * 3);
-            for(let i=0; i<count; i++) {
-                const c = new THREE.Color().setHSL(Math.random() * 0.15 + 0.55, 0.6, 0.25);
-                colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
-            }
-            nebulaGeom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-            nebula = new THREE.Mesh(nebulaGeom, nebulaMat);
-            scene.add(nebula);
-
-            starLayerBack = createStarfield(18000, 0.6, 250, 0.6, true);
-            scene.add(starLayerBack);
-            starLayerMid = createStarfield(8000, 1.0, 180, 0.85, true);
-            scene.add(starLayerMid);
-
-            const rubbleGeom = new THREE.BoxGeometry(1, 1, 1);
-            const rubbleMat = new THREE.MeshStandardMaterial({ 
-                metalness: 0.5, roughness: 0.2, transparent: true, opacity: 0.8 
-            });
-            rubbleInstances = new THREE.InstancedMesh(rubbleGeom, rubbleMat, CONFIG.MAX_RUBBLE);
-            rubbleInstances.frustumCulled = false;
-            for (let i = 0; i < CONFIG.MAX_RUBBLE; i++) {
-                rubbleInstances.setMatrixAt(i, new THREE.Matrix4().makeTranslation(0, -500, 0));
-                rubbleInstances.setColorAt(i, new THREE.Color(0xffffff)); // Initialize color buffer
-                state.rubbleData[i] = { 
-                    isActive: false, position: new THREE.Vector3(0, -500, 0), 
-                    rotation: new THREE.Euler(), scale: new THREE.Vector3(1, 1, 1), 
-                    velocity: new THREE.Vector3(), angularVelocity: new THREE.Vector3() 
-                };
-            }
-            scene.add(rubbleInstances);
-
-            createFoundation();
-            requestAnimationFrame(animate);
-
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight);
-            });
-
-            const handleInput = (e) => {
-                if (state.status !== 'PLAYING') return;
-                if (e.target.tagName === 'BUTTON' || e.target.closest('.glass-panel') || e.target.closest('.round-btn')) return;
-                const now = performance.now();
-                if (now - state.lastInputTime < CONFIG.INPUT_COOLDOWN) return;
-                if (now - state.lastSpawnTime < 200) return;
-                state.lastInputTime = now;
-                placeBlock();
-            };
-
-            window.addEventListener('mousedown', (e) => { if (e.button === 0) handleInput(e); });
-            window.addEventListener('touchstart', (e) => { if (!e.target.closest('.glass-panel') && !e.target.closest('.round-btn')) { e.preventDefault(); handleInput(e); } }, { passive: false });
+          state.rubbleFree.push(i);
+          const last = state.rubbleActive.pop();
+          if (a < state.rubbleActive.length) state.rubbleActive[a] = last;
+          continue;
         }
 
-        function createStarfield(count, size, dist, opacity, isDistant) {
-            const geom = new THREE.BufferGeometry();
-            const pos = new Float32Array(count * 3);
-            const cols = new Float32Array(count * 3);
-            for (let i = 0; i < count; i++) {
-                const r = dist + (isDistant ? Math.random() * 120 : Math.random() * 60);
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(2 * Math.random() - 1);
-                pos[i*3] = r * Math.sin(phi) * Math.cos(theta);
-                pos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
-                pos[i*3+2] = r * Math.cos(phi);
-                const hue = Math.random() > 0.8 ? (Math.random() * 0.2 + 0.5) : 0;
-                const sat = hue > 0 ? 0.4 : 0;
-                const brightness = 0.6 + Math.random() * 0.4;
-                const color = new THREE.Color().setHSL(hue, sat, brightness);
-                cols[i*3] = color.r; cols[i*3+1] = color.g; cols[i*3+2] = color.b;
-            }
-            geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-            geom.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-            return new THREE.Points(geom, new THREE.PointsMaterial({ size, vertexColors: true, transparent: true, opacity, sizeAttenuation: true, fog: false }));
-        }
+        _m4.compose(r.position, _q.setFromEuler(r.rotation), r.scale);
+        rubbleInstances.setMatrixAt(i, _m4);
+        rubUpdate = true;
+      }
+      if (rubUpdate) rubbleInstances.instanceMatrix.needsUpdate = true;
 
-        function createGlassMaterial(color) {
-            return new THREE.MeshPhysicalMaterial({ color: color, emissive: color, emissiveIntensity: 0.8, metalness: 0.2, roughness: 0.1, transmission: 0.85, thickness: 1.5, transparent: true, opacity: 0.9 });
-        }
+      // Simple perf monitor (updates ~2x/sec)
+      state._fpsAcc += dt;
+      state._fpsFrames++;
+      if (state._fpsAcc >= 0.5) {
+        state.fpsAvg = state._fpsFrames / state._fpsAcc;
+        state._fpsAcc = 0;
+        state._fpsFrames = 0;
+      }
 
-        function createFoundation() {
-            const geom = new THREE.BoxGeometry(CONFIG.INITIAL_SIZE, CONFIG.BLOCK_HEIGHT, CONFIG.INITIAL_SIZE);
-            const mat = createGlassMaterial(new THREE.Color(0x00ffff));
-            const mesh = new THREE.Mesh(geom, mat);
-            scene.add(mesh);
-            state.stack.push(mesh);
-        }
+      // Adaptive quality (keeps smoothness under load)
+      state._adaptAcc += dt;
+      if (state._adaptAcc >= CONFIG.ADAPT_INTERVAL) {
+        state._adaptAcc = 0;
+        adaptQuality();
+      }
 
-        function spawnNewBlock() {
-            const prev = state.stack[state.stack.length - 1];
-            state.axis = state.axis === 'x' ? 'z' : 'x';
-            const color = new THREE.Color(state.currentTheme.colors[state.stack.length % state.currentTheme.colors.length]);
-            const geom = new THREE.BoxGeometry(prev.geometry.parameters.width, CONFIG.BLOCK_HEIGHT, prev.geometry.parameters.depth);
-            const mesh = new THREE.Mesh(geom, createGlassMaterial(color));
-            mesh.position.y = state.stack.length * CONFIG.BLOCK_HEIGHT;
-            const offset = Math.random() > 0.5 ? 12 : -12;
-            state.direction = offset > 0 ? -1 : 1;
-            mesh.position[state.axis] = offset;
-            mesh.position[state.axis === 'x' ? 'z' : 'x'] = prev.position[state.axis === 'x' ? 'z' : 'x'];
-            scene.add(mesh);
-            state.activeBlock = mesh;
-            state.lastSpawnTime = performance.now();
-        }
+      // Render
+      composer.render();
+    }
 
-        function placeBlock() {
-            if (!state.activeBlock) return;
-            const active = state.activeBlock;
-            const prev = state.stack[state.stack.length - 1];
-            const diffConfig = DIFFICULTIES[state.difficulty];
-            const axis = state.axis;
-            const size = axis === 'x' ? active.geometry.parameters.width : active.geometry.parameters.depth;
-            let delta = active.position[axis] - prev.position[axis];
-            const threshold = state.stack.length <= diffConfig.mercy ? diffConfig.threshold : 0.15;
-            if (Math.abs(delta) < threshold) delta = 0;
-            const absDelta = Math.abs(delta);
-            const overlap = size - absDelta;
-            if (overlap <= 0.05) { gameOver(); return; }
-            if (delta === 0) {
-                active.position[axis] = prev.position[axis];
-                state.combo++;
-                if (state.combo > state.maxSessionCombo) state.maxSessionCombo = state.combo;
-                state.flash = 0.5; AudioService.playNote(state.stack.length, true);
-            } else {
-                state.combo = 0;
-                spawnRubble(active, prev, axis, delta, overlap);
-                active.geometry.dispose();
-                const other = axis === 'x' ? active.geometry.parameters.depth : active.geometry.parameters.width;
-                active.geometry = axis === 'x' ? new THREE.BoxGeometry(overlap, CONFIG.BLOCK_HEIGHT, other) : new THREE.BoxGeometry(other, CONFIG.BLOCK_HEIGHT, overlap);
-                active.position[axis] = prev.position[axis] + delta / 2;
-                AudioService.playNote(state.stack.length, false);
-            }
-            state.stack.push(active); state.activeBlock = null; state.score++;
-            state.speed = Math.min(diffConfig.max, state.speed + diffConfig.inc);
-            UIManager.render(); spawnNewBlock();
-        }
+    async function initPost() {
+      // CrazyGames: start loading as early as possible.
+      CG.loadingStart();
+      runDevTests();
+      initEngine();
+      await initGameData();
+    }
 
-        function spawnRubble(active, prev, axis, delta, overlap) {
-            const params = active.geometry.parameters;
-            const size = axis === 'x' ? params.width : params.depth;
-            const other = axis === 'x' ? params.depth : params.width;
-            const rSize = size - overlap;
-            
-            const idx = state.rubbleData.findIndex(r => !r.isActive);
-            if (idx === -1) return;
-            
-            const rPos = active.position.clone();
-            // Position rubble center at the midpoint of the dropped section
-            rPos[axis] = prev.position[axis] + (size / 2 + rSize / 2) * Math.sign(delta);
-            
-            const rScale = axis === 'x' ? new THREE.Vector3(rSize, CONFIG.BLOCK_HEIGHT, other) : new THREE.Vector3(other, CONFIG.BLOCK_HEIGHT, rSize);
-            
-            state.rubbleData[idx].isActive = true;
-            state.rubbleData[idx].position.copy(rPos);
-            state.rubbleData[idx].scale.copy(rScale);
-            state.rubbleData[idx].rotation.set(0, 0, 0);
-            state.rubbleData[idx].velocity.set(0, -10, 0); // Faster initial drop
-            state.rubbleData[idx].angularVelocity.set(Math.random() * 8 - 4, Math.random() * 4 - 2, Math.random() * 8 - 4);
-            
-            rubbleInstances.setColorAt(idx, active.material.color);
-            rubbleInstances.instanceColor.needsUpdate = true;
-        }
-
-        function gameOver() {
-            state.status = 'GAMEOVER';
-            if (state.score > state.bestScore) { state.bestScore = state.score; localStorage.setItem('stack_best', state.bestScore.toString()); }
-            if (state.maxSessionCombo > state.bestStreak) { state.bestStreak = state.maxSessionCombo; localStorage.setItem('stack_best_streak', state.bestStreak.toString()); }
-            AudioService.playGameOver();
-            UIManager.render();
-        }
-
-        function startGame() {
-            cleanup(); AudioService.init();
-            const d = DIFFICULTIES[state.difficulty];
-            state.status = 'PLAYING'; state.score = 0; state.combo = 0; state.maxSessionCombo = 0;
-            state.speed = d.initial; state.axis = 'x';
-            state.camPos.set(14, 8, 14); state.camTarget.set(14, 8, 14); state.lookTarget.set(0, 2, 0);
-            createFoundation(); UIManager.render(); spawnNewBlock();
-        }
-
-        function backToMenu() { cleanup(); state.status = 'START'; createFoundation(); updateThemeVisuals(); UIManager.render(); }
-
-        function cleanup() {
-            state.stack.forEach(m => { scene.remove(m); if (m.geometry) m.geometry.dispose(); });
-            if (state.activeBlock) { scene.remove(state.activeBlock); if (state.activeBlock.geometry) state.activeBlock.geometry.dispose(); }
-            state.stack = []; state.activeBlock = null;
-            for (let i = 0; i < CONFIG.MAX_RUBBLE; i++) { state.rubbleData[i].isActive = false; _m4.makeTranslation(0, -500, 0); rubbleInstances.setMatrixAt(i, _m4); }
-            rubbleInstances.instanceMatrix.needsUpdate = true;
-        }
-
-        function updateThemeVisuals() {
-            state.stack.forEach((m, i) => { const c = new THREE.Color(state.currentTheme.colors[i % state.currentTheme.colors.length]); m.material.color.copy(c); m.material.emissive.copy(c); });
-        }
-
-        function animate(time) {
-            requestAnimationFrame(animate);
-            if (!state.lastTime) state.lastTime = time;
-            const dt = Math.min((time - state.lastTime) / 1000, 0.04); 
-            state.lastTime = time;
-            
-            if (nebula) nebula.rotation.y += 0.005 * dt;
-            if (starLayerBack) starLayerBack.rotation.y += 0.001 * dt;
-            if (starLayerMid) starLayerMid.rotation.y += 0.0025 * dt;
-            
-            if (state.status === 'START') {
-                state.cameraOrbit += 0.12 * dt;
-                state.camTarget.set(16 * Math.cos(state.cameraOrbit), 8, 16 * Math.sin(state.cameraOrbit));
-                camera.position.lerp(state.camTarget, 0.035);
-                camera.lookAt(state.lookTarget);
-            } else {
-                const h = state.stack.length * CONFIG.BLOCK_HEIGHT;
-                state.camTarget.set(13, h + 7.5, 13);
-                state.lookTarget.lerp(_v3.set(0, h, 0), CONFIG.CAMERA_LERP);
-                camera.position.lerp(state.camTarget, CONFIG.CAMERA_LERP);
-                camera.lookAt(state.lookTarget.x, state.lookTarget.y - 2.8, state.lookTarget.z);
-            }
-
-            if (state.flash > 0) { renderer.toneMappingExposure = 1.0 + state.flash * 0.6; state.flash -= 2.0 * dt; } else { renderer.toneMappingExposure = 1.0; }
-
-            if (state.status === 'PLAYING' && state.activeBlock) {
-                state.activeBlock.position[state.axis] += state.direction * state.speed * (dt * 60);
-                if (Math.abs(state.activeBlock.position[state.axis]) > 13) { state.direction *= -1; state.activeBlock.position[state.axis] = 13 * Math.sign(state.activeBlock.position[state.axis]); }
-                pointLight.position.copy(state.activeBlock.position).y += 2.5; pointLight.color.copy(state.activeBlock.material.color);
-            }
-
-            let rubUpdate = false;
-            for (let i = 0; i < CONFIG.MAX_RUBBLE; i++) {
-                const r = state.rubbleData[i];
-                if (r.isActive) {
-                    r.position.y += r.velocity.y * (dt * 5); 
-                    r.velocity.y -= 25 * dt; // Stronger gravity
-                    r.rotation.x += r.angularVelocity.x * dt; 
-                    r.rotation.y += r.angularVelocity.y * dt; 
-                    r.rotation.z += r.angularVelocity.z * dt;
-                    if (r.position.y < -120) { 
-                        r.isActive = false; 
-                        _m4.makeTranslation(0, -500, 0); 
-                    } else { 
-                        _m4.compose(r.position, _q.setFromEuler(r.rotation), r.scale); 
-                    }
-                    rubbleInstances.setMatrixAt(i, _m4); 
-                    rubUpdate = true;
-                }
-            }
-            if (rubUpdate) rubbleInstances.instanceMatrix.needsUpdate = true;
-            composer.render();
-        }
-
-        initEngine(); initGameData();
-    </script>
+    initPost();
+  </script>
 </body>
 </html>

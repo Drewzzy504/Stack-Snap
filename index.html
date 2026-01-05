@@ -600,23 +600,34 @@
             const active = state.activeBlock;
             const prev = state.stack[state.stack.length - 1];
             const axis = state.axis;
+            
+            // 1. Get raw delta
             const size = axis === 'x' ? active.geometry.parameters.width : active.geometry.parameters.depth;
-            const delta = active.position[axis] - prev.position[axis];
+            let delta = active.position[axis] - prev.position[axis];
+            
+            // 2. STABILITY FIX: If it's within the perfect threshold, FORCE it to 0
+            // This prevents the "fake crash" on GitHub links
+            const threshold = state.stack.length <= CONFIG.MERCY_COUNT ? CONFIG.MERCY_THRESHOLD : CONFIG.PERFECT_THRESHOLD;
+            
+            if (Math.abs(delta) < threshold) {
+                delta = 0; 
+            }
+
             const absDelta = Math.abs(delta);
             const overlap = size - absDelta;
 
-            if (overlap <= 0.05) { gameOver(); return; }
+            // 3. Game Over check (increased tolerance)
+            if (overlap <= 0.01) { gameOver(); return; }
 
-            const threshold = state.stack.length <= CONFIG.MERCY_COUNT ? CONFIG.MERCY_THRESHOLD : CONFIG.PERFECT_THRESHOLD;
-            const isPerfect = absDelta < threshold;
-
-            if (isPerfect) {
+            if (delta === 0) {
+                // PERFECT SNAP
                 active.position[axis] = prev.position[axis];
                 state.combo++;
                 if (state.combo > state.maxSessionCombo) state.maxSessionCombo = state.combo;
                 state.flash = 0.5; 
                 AudioService.playNote(state.stack.length, true);
             } else {
+                // SLICED BLOCK
                 state.combo = 0;
                 spawnRubble(active, prev, axis, delta, overlap);
                 active.geometry.dispose();

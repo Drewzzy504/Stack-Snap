@@ -380,6 +380,7 @@
     import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
     import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
     import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+
     // =====================
     // CrazyGames SDK (safe local dev)
     // Full requirements without breaking localhost testing.
@@ -466,15 +467,15 @@
       INPUT_COOLDOWN: 150,
 
       // Performance
-      PIXEL_RATIO_CAP: 1.5,      // keeps mobile GPUs happy
-      PIXEL_RATIO_LOW: 1.0,      // fallback when FPS drops
-      BLOOM_RES_DIV: 3,          // higher = cheaper (3 = ~1/3 res)
-      BLOOM_RES_DIV_LOW: 5,      // even cheaper when FPS drops
+      PIXEL_RATIO_CAP: 1.5,
+      PIXEL_RATIO_LOW: 1.0,
+      BLOOM_RES_DIV: 3,
+      BLOOM_RES_DIV_LOW: 5,
       STARCOUNT_BACK: 9000,
       STARCOUNT_MID: 4500,
 
       // Adaptive tuning
-      ADAPT_INTERVAL: 0.75,      // seconds
+      ADAPT_INTERVAL: 0.75,
       FPS_LOW: 45,
       FPS_HIGH: 56,
 
@@ -495,16 +496,6 @@
       theme: 'stack_theme',
       difficulty: 'stack_difficulty'
     };
-
-    // Back-compat: normalize older keys if present.
-    (function normalizeLegacyKeys(){
-      try {
-        const legacyBest = localStorage.getItem('stack_best');
-        const legacyStreak = localStorage.getItem('stack_best_streak');
-        if (legacyBest && !localStorage.getItem(STORAGE_KEYS.best)) localStorage.setItem(STORAGE_KEYS.best, legacyBest);
-        if (legacyStreak && !localStorage.getItem(STORAGE_KEYS.bestStreak)) localStorage.setItem(STORAGE_KEYS.bestStreak, legacyStreak);
-      } catch (e) {}
-    })();
 
     function loadDifficulty() {
       try {
@@ -528,35 +519,34 @@
       return THEMES.find(t => t.id === id) || THEMES[0];
     }
 
-    function persistDifficulty(state) {
-      try { localStorage.setItem(STORAGE_KEYS.difficulty, state.difficulty); } catch (e) {}
+    function persistDifficulty(st) {
+      try { localStorage.setItem(STORAGE_KEYS.difficulty, st.difficulty); } catch (e) {}
     }
 
-    function persistTheme(state) {
-      try { localStorage.setItem(STORAGE_KEYS.theme, state.currentTheme.id); } catch (e) {}
+    function persistTheme(st) {
+      try { localStorage.setItem(STORAGE_KEYS.theme, st.currentTheme.id); } catch (e) {}
     }
 
-    function persistMuted(state) {
-      try { localStorage.setItem(STORAGE_KEYS.muted, state.isMuted ? 'true' : 'false'); } catch (e) {}
+    function persistMuted(st) {
+      try { localStorage.setItem(STORAGE_KEYS.muted, st.isMuted ? 'true' : 'false'); } catch (e) {}
     }
 
-    function persistBest(state) {
+    function persistBest(st) {
       try {
-        localStorage.setItem(STORAGE_KEYS.best, String(state.bestScore));
-        localStorage.setItem(STORAGE_KEYS.bestStreak, String(state.bestStreak));
+        localStorage.setItem(STORAGE_KEYS.best, String(st.bestScore));
+        localStorage.setItem(STORAGE_KEYS.bestStreak, String(st.bestStreak));
       } catch (e) {}
     }
 
-    // Ensure stored theme is unlocked; if not, fall back safely.
-    function reconcileThemeUnlock(state) {
+    function reconcileThemeUnlock(st) {
       const savedId = loadThemeId();
       const saved = pickThemeById(savedId);
-      if (state.bestScore < saved.unlock) {
-        const firstUnlocked = THEMES.find(t => state.bestScore >= t.unlock) || THEMES[0];
-        state.currentTheme = firstUnlocked;
+      if (st.bestScore < saved.unlock) {
+        const firstUnlocked = THEMES.find(t => st.bestScore >= t.unlock) || THEMES[0];
+        st.currentTheme = firstUnlocked;
         try { localStorage.setItem(STORAGE_KEYS.theme, firstUnlocked.id); } catch (e) {}
       } else {
-        state.currentTheme = saved;
+        st.currentTheme = saved;
       }
     }
 
@@ -567,7 +557,11 @@
       // Rewarded continue (one per run)
       continueUsed: false,
       continuePending: false,
-      // If player taps a locked theme, we allow preview (visuals) but block starting until unlocked.
+
+      // Locked theme preview
+      selectedThemeLocked: false,
+      selectedThemeUnlockAt: 0,
+
       status: 'LOADING',
       score: 0,
       bestScore: 0,
@@ -579,6 +573,7 @@
       isMuted: (() => {
         try { return localStorage.getItem(STORAGE_KEYS.muted) === 'true'; } catch (e) { return false; }
       })(),
+
       axis: 'x',
       direction: 1,
       speed: 0.18,
@@ -611,6 +606,9 @@
       _adaptAcc: 0,
       qualityLow: false
     };
+
+    state.selectedThemeLocked = state.bestScore < state.currentTheme.unlock;
+    state.selectedThemeUnlockAt = state.currentTheme.unlock;
 
     const _v3 = new THREE.Vector3();
     const _q = new THREE.Quaternion();
@@ -730,7 +728,7 @@
         this.populateThemes();
         document.getElementById('start-btn').onclick = (e) => {
           e.stopPropagation();
-          if (state.selectedThemeLocked) return; // preview allowed, but can't start locked theme
+          if (state.selectedThemeLocked) return;
           startGame();
         };
       },
@@ -744,7 +742,6 @@
           el.className = `theme-item ${locked ? 'locked' : ''} ${state.currentTheme.id === t.id ? 'selected' : ''}`;
           el.style.background = `linear-gradient(135deg, ${t.colors[0]}, ${t.colors[2]})`;
 
-          // Always show lock state visually.
           if (locked) {
             el.innerHTML = `
               <span class="lock-icon">🔒</span>
@@ -752,9 +749,6 @@
             `;
           }
 
-          // Click behavior:
-          // - Unlocked: selects & persists.
-          // - Locked: selects for PREVIEW only (no persist), and blocks Start.
           el.onclick = (e) => {
             e.stopPropagation();
             state.currentTheme = t;
@@ -860,7 +854,6 @@
       if (e) e.stopPropagation();
       backToMenu();
     };
-
     window.gameContinue = (e) => {
       if (e) e.stopPropagation();
       if (state.status !== 'GAMEOVER') return;
@@ -874,7 +867,7 @@
     // Ads pacing
     // ---------------------
     let lastAdAt = 0;
-    const AD_COOLDOWN_MS = 75_000; // 75s between interstitials (tweak as needed)
+    const AD_COOLDOWN_MS = 75_000;
 
     function requestContinueRewarded() {
       state.continuePending = true;
@@ -882,7 +875,6 @@
 
       CG.requestRewarded({
         onStart: () => {
-          // Silence audio while ad is playing.
           state.isMuted = true;
           persistMuted(state);
           UIManager.render();
@@ -893,7 +885,6 @@
           reviveAfterContinue();
         },
         onError: () => {
-          // Ad failed or blocked. Let player try again.
           state.continuePending = false;
           UIManager.render();
         }
@@ -901,7 +892,6 @@
     }
 
     function reviveAfterContinue() {
-      // Remove the failing active block (if it exists) so we resume clean.
       if (state.activeBlock) {
         try {
           scene.remove(state.activeBlock);
@@ -933,26 +923,19 @@
       if (now - lastAdAt < AD_COOLDOWN_MS) return;
       if (!CG.adsEnabled()) return;
 
-      // Don’t block UI; request ad and keep the game in GAMEOVER state.
       CG.requestInterstitial({
         onStart: () => {
           lastAdAt = now;
-          // Make sure audio is silent while ad is playing.
           state.isMuted = true;
           persistMuted(state);
           UIManager.render();
         },
-        onFinish: () => {
-          // Keep muted state as-is; player can unmute.
-        },
-        onError: () => {
-          // If ad fails, do nothing.
-        }
+        onFinish: () => {},
+        onError: () => {}
       });
     }
 
     function adaptQuality() {
-      // If FPS drops, reduce pixel ratio and bloom cost.
       if (!renderer) return;
 
       if (!state.qualityLow && state.fpsAvg < CONFIG.FPS_LOW) {
@@ -961,7 +944,7 @@
         renderer.setPixelRatio(pr);
 
         if (bloomPass) {
-          bloomPass.enabled = false; // big win
+          bloomPass.enabled = false;
           bloomPass.setSize(window.innerWidth / CONFIG.BLOOM_RES_DIV_LOW, window.innerHeight / CONFIG.BLOOM_RES_DIV_LOW);
         }
       } else if (state.qualityLow && state.fpsAvg > CONFIG.FPS_HIGH) {
@@ -989,14 +972,12 @@
     }
 
     function triggerCrashFeedback() {
-      // A quick “hit” on game over: shake + haptics.
       triggerShake(CONFIG.SHAKE_GAMEOVER_AMP, CONFIG.SHAKE_GAMEOVER_DURATION);
       triggerHaptics([35, 25, 110]);
       state.flash = Math.max(state.flash, 0.65);
     }
 
     function triggerPerfectFeedback() {
-      // Micro-juice for perfect placements.
       triggerShake(CONFIG.SHAKE_PERFECT_AMP, CONFIG.SHAKE_PERFECT_DURATION);
       triggerHaptics(10);
     }
@@ -1015,7 +996,11 @@
       assert('Difficulty value valid', !!DIFFICULTIES[state.difficulty], `(got ${state.difficulty})`);
       assert('Theme object valid', !!state.currentTheme && typeof state.currentTheme.id === 'string');
       assert('Theme exists in list', THEMES.some(t => t.id === state.currentTheme.id), `(id ${state.currentTheme?.id})`);
-      assert('Locked preview state is consistent', state.selectedThemeLocked === (state.bestScore < state.currentTheme.unlock), `(locked=${state.selectedThemeLocked}, best=${state.bestScore}, unlock=${state.currentTheme.unlock})`);
+      assert(
+        'Locked preview state is consistent',
+        state.selectedThemeLocked === (state.bestScore < state.currentTheme.unlock),
+        `(locked=${state.selectedThemeLocked}, best=${state.bestScore}, unlock=${state.currentTheme.unlock})`
+      );
 
       // If we have a foundation block, its color should match theme[0] right away.
       if (state.stack && state.stack[0] && state.stack[0].material && state.stack[0].material.color) {
@@ -1023,7 +1008,6 @@
         assert('Foundation matches theme[0]', state.stack[0].material.color.equals(expected));
       }
 
-      // After we load bestScore, we reconcile theme. This just checks unlock thresholds are sane.
       const unlocksSorted = THEMES.map(t => t.unlock).slice().sort((a,b) => a-b);
       assert('Theme unlocks are non-decreasing', unlocksSorted.every((v,i,a)=> i===0 || v>=a[i-1]));
 
@@ -1045,7 +1029,6 @@
         state.bestStreak = 0;
       }
 
-      // After bestScore is known, enforce that selected theme is unlocked.
       reconcileThemeUnlock(state);
 
       const loader = document.getElementById('loader-fill');
@@ -1053,9 +1036,8 @@
       await new Promise((r) => setTimeout(r, 600));
 
       document.getElementById('loading-screen').style.display = 'none';
-      // CrazyGames: mark loading complete only when we can show the menu.
       CG.loadingStop();
-      // Ensure selectedThemeLocked reflects current selection on first render.
+
       state.selectedThemeLocked = state.bestScore < state.currentTheme.unlock;
       state.selectedThemeUnlockAt = state.currentTheme.unlock;
 
@@ -1063,7 +1045,260 @@
       UIManager.render();
     }
 
-    // NOTE: initEngine is declared ONCE
+    function createStarfield(count, size, dist, opacity, isDistant) {
+      const geom = new THREE.BufferGeometry();
+      const pos = new Float32Array(count * 3);
+      const cols = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const r = dist + (isDistant ? Math.random() * 120 : Math.random() * 60);
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+        pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        pos[i * 3 + 2] = r * Math.cos(phi);
+        const hue = Math.random() > 0.8 ? Math.random() * 0.2 + 0.5 : 0;
+        const sat = hue > 0 ? 0.4 : 0;
+        const brightness = 0.6 + Math.random() * 0.4;
+        const color = new THREE.Color().setHSL(hue, sat, brightness);
+        cols[i * 3] = color.r;
+        cols[i * 3 + 1] = color.g;
+        cols[i * 3 + 2] = color.b;
+      }
+      geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geom.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+      return new THREE.Points(
+        geom,
+        new THREE.PointsMaterial({ size, vertexColors: true, transparent: true, opacity, sizeAttenuation: true, fog: false })
+      );
+    }
+
+    function createGlassMaterial(color) {
+      // StandardMaterial keeps neon vibe while staying smooth.
+      return new THREE.MeshStandardMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: 0.9,
+        metalness: 0.25,
+        roughness: 0.18,
+        transparent: true,
+        opacity: 0.92
+      });
+    }
+
+    function updateThemeVisuals() {
+      state.stack.forEach((m, i) => {
+        const c = new THREE.Color(state.currentTheme.colors[i % state.currentTheme.colors.length]);
+        m.material.color.copy(c);
+        if (m.material.emissive) m.material.emissive.copy(c);
+      });
+    }
+
+    function createFoundation() {
+      const geom = new THREE.BoxGeometry(CONFIG.INITIAL_SIZE, CONFIG.BLOCK_HEIGHT, CONFIG.INITIAL_SIZE);
+      const baseColor = new THREE.Color(state.currentTheme.colors[0]);
+      const mat = createGlassMaterial(baseColor);
+      const mesh = new THREE.Mesh(geom, mat);
+      scene.add(mesh);
+      state.stack.push(mesh);
+      updateThemeVisuals();
+    }
+
+    function spawnNewBlock() {
+      const prev = state.stack[state.stack.length - 1];
+      state.axis = state.axis === 'x' ? 'z' : 'x';
+      const color = new THREE.Color(state.currentTheme.colors[state.stack.length % state.currentTheme.colors.length]);
+      const geom = new THREE.BoxGeometry(prev.geometry.parameters.width, CONFIG.BLOCK_HEIGHT, prev.geometry.parameters.depth);
+      const mesh = new THREE.Mesh(geom, createGlassMaterial(color));
+      mesh.position.y = state.stack.length * CONFIG.BLOCK_HEIGHT;
+      const offset = Math.random() > 0.5 ? 12 : -12;
+      state.direction = offset > 0 ? -1 : 1;
+      mesh.position[state.axis] = offset;
+      mesh.position[state.axis === 'x' ? 'z' : 'x'] = prev.position[state.axis === 'x' ? 'z' : 'x'];
+      scene.add(mesh);
+      state.activeBlock = mesh;
+      state.lastSpawnTime = performance.now();
+    }
+
+    function spawnRubble(active, prev, axis, delta, overlap) {
+      const params = active.geometry.parameters;
+      const size = axis === 'x' ? params.width : params.depth;
+      const other = axis === 'x' ? params.depth : params.width;
+      const rSize = size - overlap;
+
+      const idx = state.rubbleFree.length ? state.rubbleFree.pop() : -1;
+      if (idx === -1) return;
+
+      const rPos = active.position.clone();
+      rPos[axis] = prev.position[axis] + (size / 2 + rSize / 2) * Math.sign(delta);
+
+      const rScale = axis === 'x'
+        ? new THREE.Vector3(rSize, CONFIG.BLOCK_HEIGHT, other)
+        : new THREE.Vector3(other, CONFIG.BLOCK_HEIGHT, rSize);
+
+      state.rubbleData[idx].isActive = true;
+      state.rubbleActive.push(idx);
+      state.rubbleData[idx].position.copy(rPos);
+      state.rubbleData[idx].scale.copy(rScale);
+      state.rubbleData[idx].rotation.set(0, 0, 0);
+      state.rubbleData[idx].velocity.set(0, -10, 0);
+      state.rubbleData[idx].angularVelocity.set(Math.random() * 8 - 4, Math.random() * 4 - 2, Math.random() * 8 - 4);
+
+      rubbleInstances.setColorAt(idx, active.material.color);
+      if (rubbleInstances.instanceColor) rubbleInstances.instanceColor.needsUpdate = true;
+    }
+
+    function placeBlock() {
+      if (!state.activeBlock) return;
+      const active = state.activeBlock;
+      const prev = state.stack[state.stack.length - 1];
+      const diffConfig = DIFFICULTIES[state.difficulty];
+      const axis = state.axis;
+      const params = active.geometry.parameters;
+      const size = axis === 'x' ? params.width : params.depth;
+      const other = axis === 'x' ? params.depth : params.width;
+      let delta = active.position[axis] - prev.position[axis];
+
+      const threshold = state.stack.length <= diffConfig.mercy ? diffConfig.threshold : 0.15;
+      if (Math.abs(delta) < threshold) delta = 0;
+
+      const absDelta = Math.abs(delta);
+      const overlap = size - absDelta;
+      if (overlap <= 0.05) {
+        gameOver();
+        return;
+      }
+
+      if (delta === 0) {
+        active.position[axis] = prev.position[axis];
+        state.combo++;
+        if (state.combo > state.maxSessionCombo) state.maxSessionCombo = state.combo;
+        state.flash = 0.5;
+        triggerPerfectFeedback();
+        AudioService.playNote(state.stack.length, true);
+      } else {
+        state.combo = 0;
+        spawnRubble(active, prev, axis, delta, overlap);
+
+        // Replace geometry (avoid reading parameters after dispose)
+        active.geometry.dispose();
+        active.geometry =
+          axis === 'x'
+            ? new THREE.BoxGeometry(overlap, CONFIG.BLOCK_HEIGHT, other)
+            : new THREE.BoxGeometry(other, CONFIG.BLOCK_HEIGHT, overlap);
+        active.position[axis] = prev.position[axis] + delta / 2;
+        AudioService.playNote(state.stack.length, false);
+      }
+
+      state.stack.push(active);
+      state.activeBlock = null;
+      state.score++;
+      state.speed = Math.min(diffConfig.max, state.speed + diffConfig.inc);
+      UIManager.render();
+      spawnNewBlock();
+    }
+
+    function gameOver() {
+      state.status = 'GAMEOVER';
+      state.continuePending = false;
+
+      if (state.score > state.bestScore) state.bestScore = state.score;
+      if (state.maxSessionCombo > state.bestStreak) state.bestStreak = state.maxSessionCombo;
+
+      CG.gameplayStop();
+      triggerCrashFeedback();
+
+      AudioService.playGameOver();
+      persistBest(state);
+      reconcileThemeUnlock(state);
+      UIManager.render();
+      maybeShowGameOverAd();
+    }
+
+    function startGame() {
+      state.continueUsed = false;
+      state.continuePending = false;
+
+      cleanup();
+      AudioService.init();
+      const d = DIFFICULTIES[state.difficulty];
+
+      state.status = 'PLAYING';
+      CG.gameplayStart();
+
+      state.score = 0;
+      state.combo = 0;
+      state.maxSessionCombo = 0;
+      state.speed = d.initial;
+      state.axis = 'x';
+
+      state.camPos.set(14, 8, 14);
+      state.camTarget.set(14, 8, 14);
+      state.lookTarget.set(0, 2, 0);
+
+      createFoundation();
+      updateThemeVisuals();
+
+      UIManager.render();
+      spawnNewBlock();
+    }
+
+    function backToMenu() {
+      CG.gameplayStop();
+      cleanup();
+      state.status = 'START';
+      createFoundation();
+      updateThemeVisuals();
+      UIManager.render();
+    }
+
+    function cleanup() {
+      if (!scene) {
+        state.stack = [];
+        state.activeBlock = null;
+        return;
+      }
+
+      const disposeMaterial = (mat) => {
+        if (!mat) return;
+        const texProps = [
+          'map','alphaMap','aoMap','bumpMap','displacementMap','emissiveMap','envMap',
+          'lightMap','metalnessMap','normalMap','roughnessMap','specularMap'
+        ];
+        for (const k of texProps) {
+          const t = mat[k];
+          if (t && typeof t.dispose === 'function') t.dispose();
+        }
+        if (typeof mat.dispose === 'function') mat.dispose();
+      };
+
+      const disposeMesh = (m) => {
+        if (!m) return;
+        scene.remove(m);
+        if (m.geometry && typeof m.geometry.dispose === 'function') m.geometry.dispose();
+        if (Array.isArray(m.material)) m.material.forEach(disposeMaterial);
+        else disposeMaterial(m.material);
+      };
+
+      state.stack.forEach(disposeMesh);
+      if (state.activeBlock) disposeMesh(state.activeBlock);
+
+      state.stack = [];
+      state.activeBlock = null;
+
+      // Reset rubble pool (InstancedMesh materials/geometries are intentionally kept alive for reuse)
+      if (rubbleInstances && state.rubbleData.length) {
+        state.rubbleFree.length = 0;
+        state.rubbleActive.length = 0;
+        for (let i = 0; i < CONFIG.MAX_RUBBLE; i++) {
+          state.rubbleData[i].isActive = false;
+          state.rubbleFree.push(i);
+          _m4.makeTranslation(0, -500, 0);
+          rubbleInstances.setMatrixAt(i, _m4);
+        }
+        rubbleInstances.instanceMatrix.needsUpdate = true;
+      }
+    }
+
     function initEngine() {
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0x000005);
@@ -1115,8 +1350,10 @@
       const rubbleMat = new THREE.MeshStandardMaterial({ metalness: 0.5, roughness: 0.2, transparent: true, opacity: 0.8 });
       rubbleInstances = new THREE.InstancedMesh(rubbleGeom, rubbleMat, CONFIG.MAX_RUBBLE);
       rubbleInstances.frustumCulled = false;
+
       state.rubbleFree.length = 0;
       state.rubbleActive.length = 0;
+
       for (let i = 0; i < CONFIG.MAX_RUBBLE; i++) {
         rubbleInstances.setMatrixAt(i, new THREE.Matrix4().makeTranslation(0, -500, 0));
         rubbleInstances.setColorAt(i, new THREE.Color(0xffffff));
@@ -1174,289 +1411,11 @@
       );
     }
 
-    function createStarfield(count, size, dist, opacity, isDistant) {
-      const geom = new THREE.BufferGeometry();
-      const pos = new Float32Array(count * 3);
-      const cols = new Float32Array(count * 3);
-      for (let i = 0; i < count; i++) {
-        const r = dist + (isDistant ? Math.random() * 120 : Math.random() * 60);
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-        pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-        pos[i * 3 + 2] = r * Math.cos(phi);
-        const hue = Math.random() > 0.8 ? Math.random() * 0.2 + 0.5 : 0;
-        const sat = hue > 0 ? 0.4 : 0;
-        const brightness = 0.6 + Math.random() * 0.4;
-        const color = new THREE.Color().setHSL(hue, sat, brightness);
-        cols[i * 3] = color.r;
-        cols[i * 3 + 1] = color.g;
-        cols[i * 3 + 2] = color.b;
-      }
-      geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      geom.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-      return new THREE.Points(
-        geom,
-        new THREE.PointsMaterial({ size, vertexColors: true, transparent: true, opacity, sizeAttenuation: true, fog: false })
-      );
-    }
-
-    function createGlassMaterial(color) {
-      // MeshPhysicalMaterial + transmission is expensive on mobile.
-      // StandardMaterial keeps the neon vibe while staying smooth.
-      return new THREE.MeshStandardMaterial({
-        color,
-        emissive: color,
-        emissiveIntensity: 0.9,
-        metalness: 0.25,
-        roughness: 0.18,
-        transparent: true,
-        opacity: 0.92
-      });
-    });
-    }
-
-    function createFoundation() {
-      // Foundation should reflect the currently selected theme immediately.
-      const geom = new THREE.BoxGeometry(CONFIG.INITIAL_SIZE, CONFIG.BLOCK_HEIGHT, CONFIG.INITIAL_SIZE);
-      const baseColor = new THREE.Color(state.currentTheme.colors[0]);
-      const mat = createGlassMaterial(baseColor);
-      const mesh = new THREE.Mesh(geom, mat);
-      scene.add(mesh);
-      state.stack.push(mesh);
-      // Keep visuals in sync right away (especially on theme change in START screen).
-      updateThemeVisuals();
-    }
-
-    function spawnNewBlock() {
-      const prev = state.stack[state.stack.length - 1];
-      state.axis = state.axis === 'x' ? 'z' : 'x';
-      const color = new THREE.Color(state.currentTheme.colors[state.stack.length % state.currentTheme.colors.length]);
-      const geom = new THREE.BoxGeometry(prev.geometry.parameters.width, CONFIG.BLOCK_HEIGHT, prev.geometry.parameters.depth);
-      const mesh = new THREE.Mesh(geom, createGlassMaterial(color));
-      mesh.position.y = state.stack.length * CONFIG.BLOCK_HEIGHT;
-      const offset = Math.random() > 0.5 ? 12 : -12;
-      state.direction = offset > 0 ? -1 : 1;
-      mesh.position[state.axis] = offset;
-      mesh.position[state.axis === 'x' ? 'z' : 'x'] = prev.position[state.axis === 'x' ? 'z' : 'x'];
-      scene.add(mesh);
-      state.activeBlock = mesh;
-      state.lastSpawnTime = performance.now();
-    }
-
-    function placeBlock() {
-      if (!state.activeBlock) return;
-      const active = state.activeBlock;
-      const prev = state.stack[state.stack.length - 1];
-      const diffConfig = DIFFICULTIES[state.difficulty];
-      const axis = state.axis;
-      const size = axis === 'x' ? active.geometry.parameters.width : active.geometry.parameters.depth;
-      let delta = active.position[axis] - prev.position[axis];
-
-      const threshold = state.stack.length <= diffConfig.mercy ? diffConfig.threshold : 0.15;
-      if (Math.abs(delta) < threshold) delta = 0;
-
-      const absDelta = Math.abs(delta);
-      const overlap = size - absDelta;
-      if (overlap <= 0.05) {
-        gameOver();
-        return;
-      }
-
-      if (delta === 0) {
-        active.position[axis] = prev.position[axis];
-        state.combo++;
-        if (state.combo > state.maxSessionCombo) state.maxSessionCombo = state.combo;
-        state.flash = 0.5;
-        triggerPerfectFeedback();
-        AudioService.playNote(state.stack.length, true);
-      } else {
-        state.combo = 0;
-        spawnRubble(active, prev, axis, delta, overlap);
-        active.geometry.dispose();
-        const other = axis === 'x' ? active.geometry.parameters.depth : active.geometry.parameters.width;
-        active.geometry =
-          axis === 'x'
-            ? new THREE.BoxGeometry(overlap, CONFIG.BLOCK_HEIGHT, other)
-            : new THREE.BoxGeometry(other, CONFIG.BLOCK_HEIGHT, overlap);
-        active.position[axis] = prev.position[axis] + delta / 2;
-        AudioService.playNote(state.stack.length, false);
-      }
-
-      state.stack.push(active);
-      state.activeBlock = null;
-      state.score++;
-      state.speed = Math.min(diffConfig.max, state.speed + diffConfig.inc);
-      UIManager.render();
-      spawnNewBlock();
-    }
-
-    function spawnRubble(active, prev, axis, delta, overlap) {
-      const params = active.geometry.parameters;
-      const size = axis === 'x' ? params.width : params.depth;
-      const other = axis === 'x' ? params.depth : params.width;
-      const rSize = size - overlap;
-
-      // O(1) rubble allocation (no findIndex in hot path)
-      const idx = state.rubbleFree.length ? state.rubbleFree.pop() : -1;
-      if (idx === -1) return;
-
-      const rPos = active.position.clone();
-      rPos[axis] = prev.position[axis] + (size / 2 + rSize / 2) * Math.sign(delta);
-
-      const rScale = axis === 'x'
-        ? new THREE.Vector3(rSize, CONFIG.BLOCK_HEIGHT, other)
-        : new THREE.Vector3(other, CONFIG.BLOCK_HEIGHT, rSize);
-
-      state.rubbleData[idx].isActive = true;
-      state.rubbleActive.push(idx);
-      state.rubbleData[idx].position.copy(rPos);
-      state.rubbleData[idx].scale.copy(rScale);
-      state.rubbleData[idx].rotation.set(0, 0, 0);
-      state.rubbleData[idx].velocity.set(0, -10, 0);
-      state.rubbleData[idx].angularVelocity.set(Math.random() * 8 - 4, Math.random() * 4 - 2, Math.random() * 8 - 4);
-
-      rubbleInstances.setColorAt(idx, active.material.color);
-      rubbleInstances.instanceColor.needsUpdate = true;
-    }
-
-    function gameOver() {
-      state.status = 'GAMEOVER';
-      state.continuePending = false;
-
-      if (state.score > state.bestScore) state.bestScore = state.score;
-      if (state.maxSessionCombo > state.bestStreak) state.bestStreak = state.maxSessionCombo;
-
-      // Leaving gameplay context.
-      CG.gameplayStop();
-
-      // Juice
-      triggerCrashFeedback();
-
-      AudioService.playGameOver();
-      persistBest(state);
-      reconcileThemeUnlock(state);
-      UIManager.render();
-
-      // Optional: show an interstitial on game over with a cooldown.
-      maybeShowGameOverAd();
-    }
-
-    function startGame() {
-      // Fresh run resets continue
-      state.continueUsed = false;
-      state.continuePending = false;
-      cleanup();
-      AudioService.init();
-      const d = DIFFICULTIES[state.difficulty];
-
-      state.status = 'PLAYING';
-      // CrazyGames: gameplay starts when an actual run starts (not menu).
-      CG.gameplayStart();
-      state.score = 0;
-      state.combo = 0;
-      state.maxSessionCombo = 0;
-      state.speed = d.initial;
-      state.axis = 'x';
-      state.camPos.set(14, 8, 14);
-      state.camTarget.set(14, 8, 14);
-      state.lookTarget.set(0, 2, 0);
-
-      createFoundation();
-      // Ensure the first visible block matches the selected theme immediately.
-      updateThemeVisuals();
-
-      UIManager.render();
-      spawnNewBlock();
-    }
-
-    function backToMenu() {
-      // Leaving gameplay context.
-      CG.gameplayStop();
-      cleanup();
-      state.status = 'START';
-      createFoundation();
-      updateThemeVisuals();
-      UIManager.render();
-    }
-
-    function cleanup() {
-      const disposeMaterial = (mat) => {
-        if (!mat) return;
-        // Dispose any textures attached to the material to avoid GPU leaks.
-        const texProps = [
-          'map','alphaMap','aoMap','bumpMap','displacementMap','emissiveMap','envMap',
-          'lightMap','metalnessMap','normalMap','roughnessMap','specularMap'
-        ];
-        for (const k of texProps) {
-          const t = mat[k];
-          if (t && typeof t.dispose === 'function') t.dispose();
-        }
-        if (typeof mat.dispose === 'function') mat.dispose();
-      };
-
-      const disposeMesh = (m) => {
-        if (!m) return;
-        scene.remove(m);
-        if (m.geometry && typeof m.geometry.dispose === 'function') m.geometry.dispose();
-        if (Array.isArray(m.material)) m.material.forEach(disposeMaterial);
-        else disposeMaterial(m.material);
-      };
-
-      // Dispose stack meshes (geometry + material)
-      state.stack.forEach(disposeMesh);
-
-      // Dispose active block if present
-      if (state.activeBlock) disposeMesh(state.activeBlock);
-
-      state.stack = [];
-      state.activeBlock = null;
-
-      // Reset rubble pool (InstancedMesh materials/geometries are intentionally kept
-      // alive for reuse; they are created once in initEngine).
-      state.rubbleFree.length = 0;
-      state.rubbleActive.length = 0;
-      for (let i = 0; i < CONFIG.MAX_RUBBLE; i++) {
-        state.rubbleData[i].isActive = false;
-        state.rubbleFree.push(i);
-        _m4.makeTranslation(0, -500, 0);
-        rubbleInstances.setMatrixAt(i, _m4);
-      }
-      rubbleInstances.instanceMatrix.needsUpdate = true;
-    });
-      if (state.activeBlock) {
-        scene.remove(state.activeBlock);
-        if (state.activeBlock.geometry) state.activeBlock.geometry.dispose();
-      }
-      state.stack = [];
-      state.activeBlock = null;
-
-      // Reset rubble pool
-      state.rubbleFree.length = 0;
-      state.rubbleActive.length = 0;
-      for (let i = 0; i < CONFIG.MAX_RUBBLE; i++) {
-        state.rubbleData[i].isActive = false;
-        state.rubbleFree.push(i);
-        _m4.makeTranslation(0, -500, 0);
-        rubbleInstances.setMatrixAt(i, _m4);
-      }
-      rubbleInstances.instanceMatrix.needsUpdate = true;
-    }
-
-    function updateThemeVisuals() {
-      state.stack.forEach((m, i) => {
-        const c = new THREE.Color(state.currentTheme.colors[i % state.currentTheme.colors.length]);
-        m.material.color.copy(c);
-        m.material.emissive.copy(c);
-      });
-    }
-
     function animate(time) {
       // Remove last frame's shake offset so we don't drift.
       if (camera && state.shakeOffset) camera.position.sub(state.shakeOffset);
       state.shakeOffset.set(0, 0, 0);
 
-      
       requestAnimationFrame(animate);
       if (!state.lastTime) state.lastTime = time;
       const dt = Math.min((time - state.lastTime) / 1000, 0.04);
@@ -1479,16 +1438,17 @@
         camera.lookAt(state.lookTarget.x, state.lookTarget.y - 2.8, state.lookTarget.z);
       }
 
-      // Apply screen shake (after base camera updates)
+      // Apply screen shake
       if (state.shakeTime > 0) {
         state.shakeTime = Math.max(0, state.shakeTime - dt);
         const t = state.shakeDuration > 0 ? (state.shakeTime / state.shakeDuration) : 0;
-        const falloff = t * t; // smoother ease-out
+        const falloff = t * t;
         const amp = state.shakeAmp * falloff;
-        const ox = (Math.random() - 0.5) * amp;
-        const oy = (Math.random() - 0.5) * amp * 0.6;
-        const oz = (Math.random() - 0.5) * amp;
-        state.shakeOffset.set(ox, oy, oz);
+        state.shakeOffset.set(
+          (Math.random() - 0.5) * amp,
+          (Math.random() - 0.5) * amp * 0.6,
+          (Math.random() - 0.5) * amp
+        );
         camera.position.add(state.shakeOffset);
 
         if (state.shakeTime === 0) {
@@ -1514,8 +1474,8 @@
         pointLight.color.copy(state.activeBlock.material.color);
       }
 
+      // Rubble
       let rubUpdate = false;
-      // Iterate only active rubble indices (avoids scanning all MAX_RUBBLE each frame)
       for (let a = state.rubbleActive.length - 1; a >= 0; a--) {
         const i = state.rubbleActive[a];
         const r = state.rubbleData[i];
@@ -1549,7 +1509,7 @@
       }
       if (rubUpdate) rubbleInstances.instanceMatrix.needsUpdate = true;
 
-      // Simple perf monitor (updates ~2x/sec)
+      // Perf monitor
       state._fpsAcc += dt;
       state._fpsFrames++;
       if (state._fpsAcc >= 0.5) {
@@ -1558,19 +1518,16 @@
         state._fpsFrames = 0;
       }
 
-      // Adaptive quality (keeps smoothness under load)
       state._adaptAcc += dt;
       if (state._adaptAcc >= CONFIG.ADAPT_INTERVAL) {
         state._adaptAcc = 0;
         adaptQuality();
       }
 
-      // Render
       composer.render();
     }
 
     async function initPost() {
-      // CrazyGames: start loading as early as possible.
       CG.loadingStart();
       runDevTests();
       initEngine();

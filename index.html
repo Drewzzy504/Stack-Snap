@@ -28,6 +28,7 @@
             font-family: 'Inter', -apple-system, sans-serif;
             -webkit-tap-highlight-color: transparent;
             user-select: none; color: white;
+            touch-action: none; /* Prevent browser gestures interfering */
         }
         #root { position: absolute; inset: 0; z-index: 1; }
         #ui-root {
@@ -188,11 +189,12 @@
             SPEED_INITIAL: 0.16,
             SPEED_INC: 0.005,
             MAX_SPEED: 0.45,
-            PERFECT_THRESHOLD: 0.12,
-            MERCY_COUNT: 3,
-            MERCY_THRESHOLD: 0.3,
+            PERFECT_THRESHOLD: 0.15,
+            MERCY_COUNT: 5,
+            MERCY_THRESHOLD: 0.35,
             CAMERA_LERP: 0.1,
-            MAX_RUBBLE: 100
+            MAX_RUBBLE: 100,
+            INPUT_COOLDOWN: 150 // ms to ignore subsequent taps
         };
 
         const state = {
@@ -210,6 +212,8 @@
             rubbleData: [], 
             activeBlock: null,
             lastTime: 0,
+            lastInputTime: 0,
+            lastSpawnTime: 0,
             cameraOrbit: 0,
             flash: 0,
             camPos: new THREE.Vector3(14, 8, 14),
@@ -489,7 +493,6 @@
                 starLayerMid = createStarfield(4000, 0.7, 180, 0.8, true);
                 scene.add(starLayerMid);
 
-                // RUBBLE SYSTEM RE-IMPLEMENTATION
                 const rubbleGeom = new THREE.BoxGeometry(1, 1, 1);
                 const rubbleMat = new THREE.MeshStandardMaterial({
                     metalness: 0.5, 
@@ -530,14 +533,35 @@
 
                 const handleInput = (e) => {
                     if (state.status !== 'PLAYING') return;
-                    if (e.target.tagName === 'BUTTON' || (e.target.closest && e.target.closest('.glass-panel'))) return;
+                    
+                    // Critical protection for buttons and glass panel clicks
+                    const isUI = e.target.tagName === 'BUTTON' || (e.target.closest && e.target.closest('.glass-panel'));
+                    if (isUI) return;
+
+                    const now = performance.now();
+                    // CRITICAL FIX: Prevent double-firing within short window (150ms)
+                    if (now - state.lastInputTime < CONFIG.INPUT_COOLDOWN) return;
+                    
+                    // CRITICAL FIX: Prevent placing block if it JUST spawned (less than 200ms ago)
+                    if (now - state.lastSpawnTime < 200) return;
+
+                    state.lastInputTime = now;
                     placeBlock();
                 };
-                window.addEventListener('mousedown', (e) => { if (e.button === 0) handleInput(e); });
+
+                // INPUT EVENT LISTENERS UPDATED FOR MOBILE
+                window.addEventListener('mousedown', (e) => { 
+                    if (e.button === 0) handleInput(e); 
+                });
+
                 window.addEventListener('touchstart', (e) => {
-                    if (e.target.tagName === 'BUTTON' || (e.target.closest && e.target.closest('.glass-panel'))) return;
-                    handleInput(e);
+                    // Prevent emulated mouse events from firing after touch
+                    if (!e.target.tagName === 'BUTTON' && !(e.target.closest && e.target.closest('.glass-panel'))) {
+                        e.preventDefault();
+                        handleInput(e);
+                    }
                 }, { passive: false });
+
             } catch(err) {
                 console.error("Engine failure:", err);
             }
@@ -610,21 +634,19 @@
             mesh.position[state.axis === 'x' ? 'z' : 'x'] = prev.position[state.axis === 'x' ? 'z' : 'x'];
             scene.add(mesh);
             state.activeBlock = mesh;
+            state.lastSpawnTime = performance.now(); // Mark spawn time for input gate
         }
 
-        // UPDATED placeBlock logic as requested with Rounding Correction
         function placeBlock() {
             if (!state.activeBlock || state.status !== 'PLAYING') return;
             const active = state.activeBlock;
             const prev = state.stack[state.stack.length - 1];
             const axis = state.axis;
             
-            // 1. Get raw delta
             const size = axis === 'x' ? active.geometry.parameters.width : active.geometry.parameters.depth;
             let delta = active.position[axis] - prev.position[axis];
             
-            // 2. STABILITY FIX: If it's within the perfect threshold, FORCE it to 0
-            // This prevents the "fake crash" on GitHub links
+            // INCREASED THRESHOLD FOR MOBILE RELIABILITY
             const threshold = state.stack.length <= CONFIG.MERCY_COUNT ? CONFIG.MERCY_THRESHOLD : CONFIG.PERFECT_THRESHOLD;
             
             if (Math.abs(delta) < threshold) {
@@ -634,18 +656,19 @@
             const absDelta = Math.abs(delta);
             const overlap = size - absDelta;
 
-            // 3. Game Over check (increased tolerance)
-            if (overlap <= 0.01) { gameOver(); return; }
+            // Improved crash detection
+            if (overlap <= 0.05) { 
+                gameOver(); 
+                return; 
+            }
 
             if (delta === 0) {
-                // PERFECT SNAP
                 active.position[axis] = prev.position[axis];
                 state.combo++;
                 if (state.combo > state.maxSessionCombo) state.maxSessionCombo = state.combo;
                 state.flash = 0.5; 
                 AudioService.playNote(state.stack.length, true);
             } else {
-                // SLICED BLOCK
                 state.combo = 0;
                 spawnRubble(active, prev, axis, delta, overlap);
                 active.geometry.dispose();
@@ -717,6 +740,7 @@
             state.camPos.set(14, 8, 14);
             state.camTarget.set(14, 8, 14);
             state.lookTarget.set(0, 2, 0);
+            state.lastSpawnTime = performance.now();
             createFoundation();
             UIManager.render();
             spawnNewBlock();
@@ -805,7 +829,6 @@
                     pointLight.intensity = 8 + (state.flash * 8);
                 }
 
-                // RUBBLE ANIMATION & VISIBILITY FIX
                 let rubbleNeedsUpdate = false;
                 for (let i = 0; i < CONFIG.MAX_RUBBLE; i++) {
                     const r = state.rubbleData[i];
@@ -817,7 +840,6 @@
                         r.rotation.y += r.angularVelocity.y * dt;
                         r.rotation.z += r.angularVelocity.z * dt;
                         
-                        // Improved cleanup logic to prevent flickering or early removal
                         if (r.position.y < -120) {
                             r.isActive = false;
                             r.position.set(0, -500, 0);
